@@ -14,6 +14,8 @@ if (fs.existsSync(schemaPath)) {
 
 try {
   db.exec("ALTER TABLE leads ADD COLUMN tags TEXT DEFAULT '[]'");
+  db.exec("ALTER TABLE leads ADD COLUMN assigned_to TEXT");
+  db.exec("ALTER TABLE leads ADD COLUMN owner_user_id TEXT");
 } catch (e) {
   // column already exists
 }

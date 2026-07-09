@@ -8,12 +8,17 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import fs from 'fs';
 
+import 'dotenv/config';
+
 const app = express();
 const PORT = 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'super_secret_crm_key';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('JWT_SECRET environment variable is required');
+}
 
 app.use(cors());
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 
 // API Routes
 app.get('/api/health', (req, res) => {
@@ -48,7 +53,7 @@ app.post('/api/auth/login', (req, res) => {
   // For MVP we allow login if password matches 'password' or the real hash
   if (!user) return res.status(401).json({ error: 'User not found' });
   
-  const valid = bcrypt.compareSync(password, user.password_hash) || password === 'password';
+  const valid = bcrypt.compareSync(password, user.password_hash);
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
   const token = jwt.sign({ id: user.id, role: user.role, tenantId: user.tenant_id }, JWT_SECRET, { expiresIn: '24h' });
@@ -111,9 +116,14 @@ app.patch('/api/tenant/settings', authenticate, (req: any, res: any) => {
   const { tenantId, role } = req.user;
   if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
-  const { company_name, primary_color, logo_url, sidebar_color, sidebar_text_color } = req.body;
-  db.prepare('UPDATE tenant_settings SET company_name = ?, primary_color = ?, logo_url = ?, sidebar_color = ?, sidebar_text_color = ? WHERE tenant_id = ?').run(company_name, primary_color, logo_url, sidebar_color, sidebar_text_color, tenantId);
-  res.json({ success: true });
+  try {
+    const { company_name, primary_color, logo_url, sidebar_color, sidebar_text_color } = req.body;
+    db.prepare('UPDATE tenant_settings SET company_name = ?, primary_color = ?, logo_url = ?, sidebar_color = ?, sidebar_text_color = ? WHERE tenant_id = ?').run(company_name, primary_color, logo_url, sidebar_color, sidebar_text_color, tenantId);
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('Error updating tenant settings:', error);
+    res.status(500).json({ error: error.message });
+  }
 });
 
 // Pipelines and Stages
@@ -251,8 +261,16 @@ app.delete('/api/stages/:id', authenticate, (req: any, res: any) => {
 
 // Leads
 app.get('/api/leads', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
-  const leads = db.prepare('SELECT * FROM leads WHERE tenant_id = ? ORDER BY created_at DESC').all(tenantId);
+  const { tenantId, role, id: userId } = req.user;
+  
+  let leads;
+  if (role === 'admin' || role === 'master') {
+    leads = db.prepare('SELECT * FROM leads WHERE tenant_id = ? ORDER BY created_at DESC').all(tenantId);
+  } else {
+    // User can only see leads assigned to them or where they are the owner
+    leads = db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND (assigned_to = ? OR owner_user_id = ?) ORDER BY created_at DESC').all(tenantId, userId, userId);
+  }
+  
   res.json(leads.map((l: any) => ({
     ...l,
     tenantId: l.tenant_id,
@@ -287,9 +305,19 @@ app.post('/api/leads', authenticate, (req: any, res: any) => {
 });
 
 app.patch('/api/leads/:id', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
+  const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
   const { stage_id, tags } = req.body;
+  
+  // Verify permissions
+  let lead;
+  if (role === 'admin' || role === 'master') {
+    lead = db.prepare('SELECT id FROM leads WHERE id = ? AND tenant_id = ?').get(id, tenantId);
+  } else {
+    lead = db.prepare('SELECT id FROM leads WHERE id = ? AND tenant_id = ? AND (assigned_to = ? OR owner_user_id = ?)').get(id, tenantId, userId, userId);
+  }
+  
+  if (!lead) return res.status(404).json({ error: 'Not found or unauthorized' });
   
   if (stage_id) {
     db.prepare('UPDATE leads SET stage_id = ? WHERE id = ? AND tenant_id = ?').run(stage_id, id, tenantId);
@@ -333,14 +361,27 @@ app.post('/api/conversations', authenticate, (req: any, res: any) => {
 });
 
 app.get('/api/conversations', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
-  const conversations = db.prepare(`
-    SELECT c.*, l.name as lead_name, l.phone as lead_phone 
-    FROM conversations c
-    JOIN leads l ON c.lead_id = l.id
-    WHERE c.tenant_id = ?
-    ORDER BY c.updated_at DESC
-  `).all(tenantId);
+  const { tenantId, role, id: userId } = req.user;
+  
+  let conversations;
+  if (role === 'admin' || role === 'master') {
+    conversations = db.prepare(`
+      SELECT c.*, l.name as lead_name, l.phone as lead_phone 
+      FROM conversations c
+      JOIN leads l ON c.lead_id = l.id
+      WHERE c.tenant_id = ?
+      ORDER BY c.updated_at DESC
+    `).all(tenantId);
+  } else {
+    conversations = db.prepare(`
+      SELECT c.*, l.name as lead_name, l.phone as lead_phone 
+      FROM conversations c
+      JOIN leads l ON c.lead_id = l.id
+      WHERE c.tenant_id = ? AND c.assigned_to = ?
+      ORDER BY c.updated_at DESC
+    `).all(tenantId, userId);
+  }
+  
   res.json(conversations.map((c: any) => ({
     ...c,
     tenantId: c.tenant_id,
@@ -355,25 +396,37 @@ app.get('/api/conversations', authenticate, (req: any, res: any) => {
 
 // Messages
 app.get('/api/conversations/:id/messages', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
+  const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
   
-  // Verify tenant
-  const conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId);
-  if (!conv) return res.status(404).json({ error: 'Not found' });
+  // Verify tenant and permissions
+  let conv;
+  if (role === 'admin' || role === 'master') {
+    conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId);
+  } else {
+    conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ? AND assigned_to = ?').get(id, tenantId, userId);
+  }
+  
+  if (!conv) return res.status(404).json({ error: 'Not found or unauthorized' });
   
   const messages = db.prepare('SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC').all(id);
   res.json(messages);
 });
 
 app.post('/api/conversations/:id/messages', authenticate, (req: any, res: any) => {
-  const { tenantId, id: userId } = req.user;
+  const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
   const { text } = req.body;
   
-  // Verify tenant
-  const conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId);
-  if (!conv) return res.status(404).json({ error: 'Not found' });
+  // Verify tenant and permissions
+  let conv;
+  if (role === 'admin' || role === 'master') {
+    conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId);
+  } else {
+    conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ? AND assigned_to = ?').get(id, tenantId, userId);
+  }
+  
+  if (!conv) return res.status(404).json({ error: 'Not found or unauthorized' });
   
   const messageId = Math.random().toString(36).substring(2, 9);
   db.prepare('INSERT INTO messages (id, conversation_id, sender_id, text) VALUES (?, ?, ?, ?)').run(messageId, id, userId, text);
@@ -399,6 +452,11 @@ async function startServer() {
       res.sendFile(path.join(distPath, 'index.html'));
     });
   }
+
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error('Express global error:', err);
+    res.status(err.status || 500).json({ error: err.message });
+  });
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);

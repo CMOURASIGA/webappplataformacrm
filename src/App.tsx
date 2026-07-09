@@ -15,6 +15,7 @@ import LeadsList from './pages/crm/LeadsList';
 import Chat from './pages/chat/Chat';
 import QuickReplies from './pages/chat/QuickReplies';
 import Settings from './pages/admin/Settings';
+import WhatsAppSettings from './pages/settings/WhatsAppSettings';
 
 export default function App() {
   return (
@@ -31,6 +32,7 @@ export default function App() {
           <Route path="chat" element={<Chat />} />
           <Route path="chat/quick-replies" element={<QuickReplies />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="settings/whatsapp" element={<WhatsAppSettings />} />
           <Route path="master/tenants" element={<Tenants />} />
         </Route>
       </Routes>

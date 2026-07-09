@@ -4,8 +4,11 @@ import { Users, MessageSquare, CheckCircle, Clock } from 'lucide-react';
 
 export default function Dashboard() {
   const currentUser = useStore(state => state.currentUser);
-  const leads = useStore(state => state.leads).filter(l => l.tenantId === currentUser?.tenantId);
-  const conversations = useStore(state => state.conversations).filter(c => c.tenantId === currentUser?.tenantId);
+  const activeTenantId = useStore(state => state.activeTenantId);
+  const selectedTenantId = currentUser?.role === 'master' ? activeTenantId : currentUser?.tenantId;
+  
+  const leads = useStore(state => state.leads).filter(l => l.tenantId === selectedTenantId);
+  const conversations = useStore(state => state.conversations).filter(c => c.tenantId === selectedTenantId);
 
   const stats = [
     { name: 'Total Leads', value: leads.length, icon: Users, color: 'text-primary-600', bg: 'bg-primary-100' },
