@@ -18,6 +18,7 @@ import Chat from './pages/chat/Chat';
 import QuickReplies from './pages/chat/QuickReplies';
 import Settings from './pages/admin/Settings';
 import Users from './pages/admin/Users';
+import KnowledgeBase from './pages/settings/KnowledgeBase';
 import AiSettings from './pages/settings/AiSettings';
 import WhatsAppSettings from './pages/settings/WhatsAppSettings';
 
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="chat/quick-replies" element={<QuickReplies />} />
           <Route path="settings" element={<Settings />} />
           <Route path="users" element={<Users />} />
+          <Route path="knowledge" element={<KnowledgeBase />} />
           <Route path="settings/ai" element={<AiSettings />} />
           <Route path="settings/whatsapp" element={<WhatsAppSettings />} />
           <Route path="master/dashboard" element={<MasterDashboard />} />

@@ -11,7 +11,7 @@ import {
   Trello,
   Smartphone,
 } from "lucide-react";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Book } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useApplyTenantTheme } from "../../hooks/useApplyTenantTheme";
 

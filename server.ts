@@ -97,6 +97,30 @@ app.get('/api/dashboard/master', authenticate, (req: any, res: any) => {
 });
 
 
+
+app.get('/api/knowledge-bases', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  const bases = db.prepare('SELECT * FROM knowledge_bases WHERE tenant_id = ?').all(tenantId);
+  res.json(bases);
+});
+
+app.post('/api/knowledge-bases', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  const { name, description } = req.body;
+  if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
+  
+  const newId = Math.random().toString(36).substring(2, 9);
+  db.prepare('INSERT INTO knowledge_bases (id, tenant_id, name, description) VALUES (?, ?, ?, ?)').run(
+    newId, tenantId, name, description || ''
+  );
+  
+  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'Base Criada', 'knowledge_bases', newId
+  );
+  
+  res.json({ id: newId });
+});
+
 app.get('/api/users', authenticate, (req: any, res: any) => {
   const { tenantId, role } = req.user;
   
@@ -676,24 +700,63 @@ app.patch('/api/conversations/:id/status', authenticate, (req: any, res: any) =>
   res.json({ success: true });
 });
 
-app.post('/api/conversations/:id/messages', authenticate, (req: any, res: any) => {
+app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: any) => {
   const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
   const { text } = req.body;
   
-  // Verify tenant and permissions
-  let conv;
-  if (role === 'admin' || role === 'master') {
-    conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId);
-  } else {
-    conv = db.prepare('SELECT id FROM conversations WHERE id = ? AND tenant_id = ? AND assigned_to = ?').get(id, tenantId, userId);
-  }
-  
+  let conv = db.prepare('SELECT * FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId) as any;
   if (!conv) return res.status(404).json({ error: 'Not found or unauthorized' });
   
+  if (role !== 'admin' && role !== 'master' && conv.assigned_to !== userId) {
+    return res.status(403).json({ error: 'Conversa não atribuída a você' });
+  }
+
+  const lead = db.prepare('SELECT phone FROM leads WHERE id = ? AND tenant_id = ?').get(conv.lead_id, tenantId) as any;
+  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ? AND connection_status = ?').get(tenantId, 'connected') as any;
+
+  let externalMessageId = null;
+  let status = 'sent';
+
+  if (connection && lead?.phone) {
+     try {
+         const response = await fetch(`https://graph.facebook.com/v19.0/${connection.phone_number_id}/messages`, {
+             method: 'POST',
+             headers: {
+                 'Authorization': `Bearer ${connection.access_token_encrypted}`,
+                 'Content-Type': 'application/json'
+             },
+             body: JSON.stringify({
+                 messaging_product: 'whatsapp',
+                 to: lead.phone,
+                 type: 'text',
+                 text: { body: text }
+             })
+         });
+         
+         const result = await response.json() as any;
+         if (result.error) {
+             console.error("Meta API Error:", result.error);
+             status = 'failed';
+         } else if (result.messages && result.messages.length > 0) {
+             externalMessageId = result.messages[0].id;
+         }
+     } catch (err) {
+         console.error("Meta API Fetch Error:", err);
+         status = 'failed';
+     }
+  }
+
   const messageId = Math.random().toString(36).substring(2, 9);
-  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, text) VALUES (?, ?, ?, ?)').run(messageId, id, userId, text);
-  db.prepare('UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, text, status, external_message_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+    messageId, id, userId, 'user', 'outbound', text, status, externalMessageId
+  );
+  
+  if (conv.status === 'waiting_agent' || conv.status === 'new') {
+     db.prepare('UPDATE conversations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('in_progress', id);
+  } else {
+     db.prepare('UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(id);
+  }
   
   const newMessage = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
   res.json(newMessage);
@@ -701,139 +764,6 @@ app.post('/api/conversations/:id/messages', authenticate, (req: any, res: any) =
 
 
 // Vite middleware for dev
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
-
-  app.use((err: any, req: any, res: any, next: any) => {
-    console.error('Express global error:', err);
-    res.status(err.status || 500).json({ error: err.message });
-  });
-
-  
-app.get('/api/whatsapp/status', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
-  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
-  res.json(connection || null);
-});
-
-app.post('/api/whatsapp/connect', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
-  const { code } = req.body; // Mocked code
-  
-  const existing = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
-  
-  if (existing) {
-     db.prepare('UPDATE whatsapp_connections SET connection_status = ?, phone_number_id = ?, waba_id = ?, display_phone_number = ?, connected_at = CURRENT_TIMESTAMP WHERE tenant_id = ?').run(
-       'connected', '1234567890', '0987654321', '+55 11 99999-9999', tenantId
-     );
-  } else {
-     db.prepare('INSERT INTO whatsapp_connections (id, tenant_id, connection_status, phone_number_id, waba_id, display_phone_number, connected_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').run(
-       Math.random().toString(36).substring(2, 9), tenantId, 'connected', '1234567890', '0987654321', '+55 11 99999-9999'
-     );
-  }
-  
-  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
-    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Conectado', 'whatsapp_connections'
-  );
-  
-  res.json({ success: true });
-});
-
-app.post('/api/whatsapp/disconnect', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
-  db.prepare('DELETE FROM whatsapp_connections WHERE tenant_id = ?').run(tenantId);
-  
-  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
-    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Desconectado', 'whatsapp_connections'
-  );
-  
-  res.json({ success: true });
-});
-
-app.get('/api/meta/webhook', (req: any, res: any) => {
-  // Hub challenge for Meta
-  if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === process.env.META_VERIFY_TOKEN) {
-    res.send(req.query['hub.challenge']);
-  } else {
-    res.sendStatus(400);
-  }
-});
-
-app.post('/api/meta/webhook', (req: any, res: any) => {
-  const body = req.body;
-  
-  if (body.object === 'whatsapp_business_account') {
-    // Implementação básica de recebimento para o MVP
-    console.log("Recebido Webhook do WhatsApp", JSON.stringify(body));
-    
-    body.entry?.forEach((entry: any) => {
-       entry.changes?.forEach((change: any) => {
-          if (change.value && change.value.messages) {
-              const phoneNumberId = change.value.metadata.phone_number_id;
-              const msg = change.value.messages[0];
-              const fromPhone = msg.from;
-              
-              const connection = db.prepare('SELECT tenant_id FROM whatsapp_connections WHERE phone_number_id = ?').get(phoneNumberId) as any;
-              
-              if (connection) {
-                  let lead = db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND phone = ?').get(connection.tenant_id, fromPhone) as any;
-                  if (!lead) {
-                      const newLeadId = Math.random().toString(36).substring(2, 9);
-                      db.prepare('INSERT INTO leads (id, tenant_id, name, phone, source) VALUES (?, ?, ?, ?, ?)').run(
-                         newLeadId, connection.tenant_id, 'Lead ' + fromPhone, fromPhone, 'whatsapp'
-                      );
-                      lead = { id: newLeadId, tenant_id: connection.tenant_id };
-                  }
-                  
-                  let conv = db.prepare('SELECT * FROM conversations WHERE tenant_id = ? AND lead_id = ? AND status != ?').get(connection.tenant_id, lead.id, 'closed') as any;
-                  if (!conv) {
-                      const newConvId = Math.random().toString(36).substring(2, 9);
-                      db.prepare('INSERT INTO conversations (id, tenant_id, lead_id, protocol_number) VALUES (?, ?, ?, ?)').run(
-                         newConvId, connection.tenant_id, lead.id, 'WAPP-' + Date.now()
-                      );
-                      conv = { id: newConvId };
-                  } else if (conv.status === 'closed') {
-                     db.prepare('UPDATE conversations SET status = ? WHERE id = ?').run('reopened', conv.id);
-                  }
-                  
-                  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, text, external_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
-                      Math.random().toString(36).substring(2, 9),
-                      conv.id,
-                      lead.id,
-                      'lead',
-                      'inbound',
-                      msg.text?.body || '[Arquivo]',
-                      msg.id
-                  );
-              }
-          }
-       });
-    });
-    
-    res.sendStatus(200);
-  } else {
-    res.sendStatus(404);
-  }
-});
-
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
-
-startServer();
 
 // AI Routes
 import { generateAiResponse } from './src/services/openaiService';
@@ -1167,3 +1097,142 @@ app.get('/api/master/ai-usage', authenticate, (req: any, res: any) => {
 
   res.json(usage);
 });
+
+
+async function startServer() {
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error('Express global error:', err);
+    res.status(err.status || 500).json({ error: err.message });
+  });
+
+  
+app.get('/api/whatsapp/status', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
+  res.json(connection || null);
+});
+
+app.post('/api/whatsapp/connect', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  const { phone_number_id, waba_id, access_token, display_phone_number } = req.body;
+  
+  if (!phone_number_id || !waba_id || !access_token) {
+     return res.status(400).json({ error: 'Faltam credenciais' });
+  }
+
+  const existing = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
+  
+  if (existing) {
+     db.prepare('UPDATE whatsapp_connections SET connection_status = ?, phone_number_id = ?, waba_id = ?, display_phone_number = ?, access_token_encrypted = ?, connected_at = CURRENT_TIMESTAMP WHERE tenant_id = ?').run(
+       'connected', phone_number_id, waba_id, display_phone_number || '', access_token, tenantId
+     );
+  } else {
+     db.prepare('INSERT INTO whatsapp_connections (id, tenant_id, connection_status, phone_number_id, waba_id, display_phone_number, access_token_encrypted, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').run(
+       Math.random().toString(36).substring(2, 9), tenantId, 'connected', phone_number_id, waba_id, display_phone_number || '', access_token
+     );
+  }
+  
+  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
+    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Conectado', 'whatsapp_connections'
+  );
+  
+  res.json({ success: true });
+});
+
+app.post('/api/whatsapp/disconnect', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  db.prepare('DELETE FROM whatsapp_connections WHERE tenant_id = ?').run(tenantId);
+  
+  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
+    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Desconectado', 'whatsapp_connections'
+  );
+  
+  res.json({ success: true });
+});
+
+app.get('/api/meta/webhook', (req: any, res: any) => {
+  // Hub challenge for Meta
+  if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === process.env.META_VERIFY_TOKEN) {
+    res.send(req.query['hub.challenge']);
+  } else {
+    res.sendStatus(400);
+  }
+});
+
+app.post('/api/meta/webhook', (req: any, res: any) => {
+  const body = req.body;
+  
+  if (body.object === 'whatsapp_business_account') {
+    // Implementação básica de recebimento para o MVP
+    console.log("Recebido Webhook do WhatsApp", JSON.stringify(body));
+    
+    body.entry?.forEach((entry: any) => {
+       entry.changes?.forEach((change: any) => {
+          if (change.value && change.value.messages) {
+              const phoneNumberId = change.value.metadata.phone_number_id;
+              const msg = change.value.messages[0];
+              const fromPhone = msg.from;
+              
+              const connection = db.prepare('SELECT tenant_id FROM whatsapp_connections WHERE phone_number_id = ?').get(phoneNumberId) as any;
+              
+              if (connection) {
+                  let lead = db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND phone = ?').get(connection.tenant_id, fromPhone) as any;
+                  if (!lead) {
+                      const newLeadId = Math.random().toString(36).substring(2, 9);
+                      db.prepare('INSERT INTO leads (id, tenant_id, name, phone, source) VALUES (?, ?, ?, ?, ?)').run(
+                         newLeadId, connection.tenant_id, 'Lead ' + fromPhone, fromPhone, 'whatsapp'
+                      );
+                      lead = { id: newLeadId, tenant_id: connection.tenant_id };
+                  }
+                  
+                  let conv = db.prepare('SELECT * FROM conversations WHERE tenant_id = ? AND lead_id = ? AND status != ?').get(connection.tenant_id, lead.id, 'closed') as any;
+                  if (!conv) {
+                      const newConvId = Math.random().toString(36).substring(2, 9);
+                      db.prepare('INSERT INTO conversations (id, tenant_id, lead_id, protocol_number) VALUES (?, ?, ?, ?)').run(
+                         newConvId, connection.tenant_id, lead.id, 'WAPP-' + Date.now()
+                      );
+                      conv = { id: newConvId };
+                  } else if (conv.status === 'closed') {
+                     db.prepare('UPDATE conversations SET status = ? WHERE id = ?').run('reopened', conv.id);
+                  }
+                  
+                  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, text, external_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+                      Math.random().toString(36).substring(2, 9),
+                      conv.id,
+                      lead.id,
+                      'lead',
+                      'inbound',
+                      msg.text?.body || '[Arquivo]',
+                      msg.id
+                  );
+              }
+          }
+       });
+    });
+    
+    res.sendStatus(200);
+  } else {
+    res.sendStatus(404);
+  }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+startServer();

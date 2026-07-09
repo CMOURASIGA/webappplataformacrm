@@ -23,16 +23,18 @@ export default function WhatsAppSettings() {
     }
   }
 
-  async function handleConnect() {
-    // Simulando o Embedded Signup da Meta
-    const fakeCode = "mock_code_123456";
+  async function handleConnect(e: React.FormEvent) {
+    e.preventDefault();
+    const formData = new FormData(e.target as HTMLFormElement);
+    const data = Object.fromEntries(formData.entries());
+
     try {
       await fetchApi('/whatsapp/connect', {
         method: 'POST',
-        body: JSON.stringify({ code: fakeCode })
+        body: JSON.stringify(data)
       });
       loadConnection();
-      alert('Conectado com sucesso (simulado)!');
+      alert('Conectado com sucesso!');
     } catch (err) {
       console.error(err);
       alert('Erro ao conectar.');
@@ -100,10 +102,26 @@ export default function WhatsAppSettings() {
          
          <div className="space-y-4">
             {!connection ? (
-              <>
-                <Button className="w-full sm:w-auto" onClick={handleConnect}>Conectar com Facebook / Meta</Button>
-                <p className="text-xs text-slate-400">Você será redirecionado para o fluxo Embedded Signup da Meta.</p>
-              </>
+              <form onSubmit={handleConnect} className="space-y-4 max-w-md">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Phone Number ID</label>
+                  <input name="phone_number_id" required className="w-full border border-slate-300 rounded-lg p-2" placeholder="Ex: 104561234567890" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">WhatsApp Business Account ID (WABA ID)</label>
+                  <input name="waba_id" required className="w-full border border-slate-300 rounded-lg p-2" placeholder="Ex: 101234567890123" />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Permanent Access Token</label>
+                  <input name="access_token" required type="password" className="w-full border border-slate-300 rounded-lg p-2" placeholder="EAA..." />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Número de Exibição (Opcional)</label>
+                  <input name="display_phone_number" className="w-full border border-slate-300 rounded-lg p-2" placeholder="+55 11 99999-9999" />
+                </div>
+                <Button type="submit" className="w-full sm:w-auto">Conectar com WhatsApp</Button>
+                <p className="text-xs text-slate-400 mt-2">Para este MVP, insira as credenciais do seu app Meta for Developers.</p>
+              </form>
             ) : (
               <div className="flex gap-2">
                  <Button variant="outline" className="text-red-600 hover:text-red-700 hover:bg-red-50" onClick={handleDisconnect}>Desconectar</Button>

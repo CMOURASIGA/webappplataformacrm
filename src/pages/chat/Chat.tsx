@@ -11,6 +11,8 @@ import ReactQuill from 'react-quill';
 import 'react-quill/dist/quill.snow.css';
 
 export default function Chat() {
+  const [filter, setFilter] = useState<'minhas' | 'fila' | 'todas'>('minhas');
+
   const currentUser = useStore(state => state.currentUser);
   const activeTenantId = useStore(state => state.activeTenantId);
   const conversations = useStore(state => state.conversations);
@@ -92,6 +94,11 @@ export default function Chat() {
 
   const tenantLeads = leads.filter(l => l.tenantId === tenantId);
   const tenantConversations = conversations.filter(c => c.tenantId === tenantId);
+  const filteredConversations = tenantConversations.filter(c => {
+    if (filter === 'minhas') return c.assignedTo === currentUser?.id && c.status !== 'closed';
+    if (filter === 'fila') return !c.assignedTo || c.status === 'unassigned' || c.status === 'new';
+    return true;
+  }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   
   const activeLead = activeLeadId ? tenantLeads.find(l => l.id === activeLeadId) : null;
   const activeConversation = activeLeadId ? tenantConversations.find(c => c.leadId === activeLeadId) : null;
@@ -131,36 +138,53 @@ export default function Chat() {
     <div className="h-[calc(100vh-8rem)] flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-lg">
       {/* Sidebar: Leads List */}
       <div className="w-80 border-r border-slate-200 flex flex-col bg-slate-50/30">
-        <div className="p-4 border-b border-slate-100 bg-slate-50/50 font-bold text-slate-800">
-          Leads / Conversas
+        
+        <div className="p-4 border-b border-slate-100 bg-white">
+          <div className="font-bold text-slate-800 mb-4">Conversas</div>
+          <div className="flex bg-slate-100 p-1 rounded-lg">
+             <button onClick={() => setFilter('minhas')} className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", filter === 'minhas' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700')}>Minhas</button>
+             <button onClick={() => setFilter('fila')} className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", filter === 'fila' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700')}>Fila</button>
+             <button onClick={() => setFilter('todas')} className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", filter === 'todas' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700')}>Todas</button>
+          </div>
         </div>
         <div className="flex-1 overflow-y-auto">
-          {tenantLeads.map(lead => {
-            const isActive = activeLeadId === lead.id;
-            const conv = tenantConversations.find(c => c.leadId === lead.id);
-            const leadPipeline = pipelines.find(p => p.id === lead.pipelineId);
-            const stageName = leadPipeline?.stages.find(s => s.id === lead.stageId)?.name || 'Sem funil';
+          {filteredConversations.map(conv => {
+            const lead = tenantLeads.find(l => l.id === conv.leadId);
+            const isActive = activeConversation?.id === conv.id;
             
             return (
               <div 
-                key={lead.id} 
-                onClick={() => handleSelectLead(lead.id)}
+                key={conv.id} 
+                onClick={() => {
+                   if (lead) handleSelectLead(lead.id);
+                }}
                 className={cn(
-                  "p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors",
-                  isActive && "bg-primary-50 border-l-4 border-l-primary-600"
+                  "p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors bg-white",
+                  isActive && "bg-primary-50/50 border-l-4 border-l-primary-600"
                 )}
               >
-                <div className="font-bold text-sm text-slate-800">{lead.name}</div>
-                <div className="text-[11px] text-slate-500 mt-1 capitalize font-medium">
-                  {stageName} {conv ? '• ' + conv.status.replace('_', ' ') : '• Sem conversa'}
+                <div className="flex justify-between items-start mb-1">
+                   <div className="font-bold text-sm text-slate-800 truncate pr-2">{lead?.name || 'Desconhecido'}</div>
+                   <div className="text-[10px] text-slate-400 whitespace-nowrap">{new Date(conv.updatedAt).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</div>
+                </div>
+                <div className="text-xs text-slate-500 truncate mb-2">{lead?.phone}</div>
+                <div className="flex gap-2">
+                   <span className={cn("text-[10px] px-1.5 py-0.5 rounded font-medium", 
+                     conv.status === 'unassigned' || conv.status === 'new' ? 'bg-amber-100 text-amber-700' :
+                     conv.status === 'closed' ? 'bg-slate-100 text-slate-600' :
+                     'bg-emerald-100 text-emerald-700'
+                   )}>
+                     {conv.status === 'unassigned' || conv.status === 'new' ? 'Na Fila' : conv.status === 'closed' ? 'Encerrado' : 'Em Andamento'}
+                   </span>
                 </div>
               </div>
             );
           })}
-          {tenantLeads.length === 0 && (
-            <div className="p-4 text-center text-sm text-slate-500">Nenhum lead encontrado.</div>
+          {filteredConversations.length === 0 && (
+             <div className="p-8 text-center text-slate-400 text-sm">Nenhuma conversa encontrada.</div>
           )}
         </div>
+
       </div>
 
       {/* Main: Chat Area */}
