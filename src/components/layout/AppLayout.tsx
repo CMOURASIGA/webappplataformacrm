@@ -11,6 +11,7 @@ import {
   Trello,
   Smartphone,
 } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useApplyTenantTheme } from "../../hooks/useApplyTenantTheme";
 
@@ -129,6 +130,12 @@ export function AppLayout() {
           icon: <Smartphone size={16} />,
           adminOnly: true,
         },
+        {
+          name: "Inteligência Artificial",
+          href: "/settings/ai",
+          icon: <Settings size={16} />,
+          adminOnly: true,
+        },
       ],
     },
   ];
@@ -143,6 +150,11 @@ export function AppLayout() {
       name: "Tenants (Clientes)",
       href: "/master/tenants",
       icon: <Building2 size={16} />,
+    },
+    {
+      name: "Uso de IA",
+      href: "/master/ai-usage",
+      icon: <Sparkles size={16} />,
     },
   ];
 

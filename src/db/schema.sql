@@ -126,3 +126,54 @@ CREATE TABLE IF NOT EXISTS quick_replies (
   FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
 );
 
+
+CREATE TABLE IF NOT EXISTS ai_settings (
+  tenant_id TEXT PRIMARY KEY,
+  enabled BOOLEAN DEFAULT 0,
+  model TEXT DEFAULT 'gpt-4o-mini',
+  tone TEXT DEFAULT 'profissional, claro e cordial',
+  company_context TEXT,
+  business_rules TEXT,
+  max_tokens_per_request INTEGER DEFAULT 1200,
+  monthly_token_limit INTEGER DEFAULT 100000,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  user_id TEXT,
+  conversation_id TEXT,
+  lead_id TEXT,
+  action TEXT NOT NULL,
+  model TEXT NOT NULL,
+  input_tokens INTEGER DEFAULT 0,
+  output_tokens INTEGER DEFAULT 0,
+  total_tokens INTEGER DEFAULT 0,
+  estimated_cost_usd REAL DEFAULT 0,
+  status TEXT DEFAULT 'success',
+  error_message TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+  FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE SET NULL,
+  FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS ai_outputs (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  user_id TEXT,
+  conversation_id TEXT,
+  lead_id TEXT,
+  action TEXT NOT NULL,
+  prompt TEXT,
+  output_json TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE SET NULL,
+  FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE SET NULL,
+  FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE SET NULL
+);

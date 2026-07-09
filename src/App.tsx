@@ -9,12 +9,14 @@ import { AppLayout } from './components/layout/AppLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Tenants from './pages/master/Tenants';
+import AiUsage from './pages/master/AiUsage';
 import Kanban from './pages/crm/Kanban';
 import KanbanConfig from './pages/crm/KanbanConfig';
 import LeadsList from './pages/crm/LeadsList';
 import Chat from './pages/chat/Chat';
 import QuickReplies from './pages/chat/QuickReplies';
 import Settings from './pages/admin/Settings';
+import AiSettings from './pages/settings/AiSettings';
 import WhatsAppSettings from './pages/settings/WhatsAppSettings';
 
 export default function App() {
@@ -32,8 +34,10 @@ export default function App() {
           <Route path="chat" element={<Chat />} />
           <Route path="chat/quick-replies" element={<QuickReplies />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="settings/ai" element={<AiSettings />} />
           <Route path="settings/whatsapp" element={<WhatsAppSettings />} />
           <Route path="master/tenants" element={<Tenants />} />
+          <Route path="master/ai-usage" element={<AiUsage />} />
         </Route>
       </Routes>
     </BrowserRouter>

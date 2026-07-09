@@ -477,3 +477,334 @@ async function startServer() {
 }
 
 startServer();
+
+// AI Routes
+import { generateAiResponse } from './src/services/openaiService';
+import crypto from 'crypto';
+
+function getTenantAiUsageThisMonth(tenantId: string) {
+  const row = db.prepare(`
+    SELECT COALESCE(SUM(total_tokens), 0) as total
+    FROM ai_usage_logs
+    WHERE tenant_id = ?
+      AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')
+  `).get(tenantId) as any;
+
+  return Number(row?.total || 0);
+}
+
+function ensureTenantCanUseAi(tenantId: string) {
+  let settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
+
+  if (!settings) {
+    db.prepare('INSERT INTO ai_settings (tenant_id) VALUES (?)').run(tenantId);
+    settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
+  }
+
+  if (!settings || !settings.enabled) {
+    throw new Error('IA não habilitada para este cliente');
+  }
+
+  const used = getTenantAiUsageThisMonth(tenantId);
+  const limit = settings.monthly_token_limit || 100000;
+
+  if (used >= limit) {
+    throw new Error('Limite mensal de IA atingido');
+  }
+
+  return settings;
+}
+
+app.get('/api/ai/settings', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  
+  let settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
+  if (!settings) {
+    db.prepare('INSERT INTO ai_settings (tenant_id) VALUES (?)').run(tenantId);
+    settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
+  }
+  
+  settings.current_usage = getTenantAiUsageThisMonth(tenantId);
+  res.json(settings);
+});
+
+app.patch('/api/ai/settings', authenticate, (req: any, res: any) => {
+  if (req.user.role !== 'admin' && req.user.role !== 'master') {
+    return res.status(403).json({ error: 'Apenas administradores podem configurar a IA' });
+  }
+
+  const { tenantId } = req.user;
+  const { enabled, model, tone, company_context, business_rules, monthly_token_limit } = req.body;
+  
+  let existing = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
+  if (!existing) {
+    db.prepare('INSERT INTO ai_settings (tenant_id) VALUES (?)').run(tenantId);
+  }
+
+  db.prepare(`
+    UPDATE ai_settings 
+    SET enabled = ?, model = ?, tone = ?, company_context = ?, business_rules = ?, monthly_token_limit = ?, updated_at = CURRENT_TIMESTAMP
+    WHERE tenant_id = ?
+  `).run(
+    enabled ? 1 : 0, 
+    model || 'gpt-4o-mini', 
+    tone || '', 
+    company_context || '', 
+    business_rules || '', 
+    monthly_token_limit || 100000, 
+    tenantId
+  );
+  
+  res.json({ success: true });
+});
+
+app.post('/api/ai/suggest-reply', authenticate, async (req: any, res: any) => {
+  const { tenantId, id: userId } = req.user;
+  const { conversationId } = req.body;
+
+  try {
+    const settings = ensureTenantCanUseAi(tenantId);
+
+    const conversation = db.prepare(`
+      SELECT c.*, l.name as lead_name, l.phone as lead_phone, l.email as lead_email, l.company as lead_company
+      FROM conversations c
+      JOIN leads l ON l.id = c.lead_id
+      WHERE c.id = ? AND c.tenant_id = ?
+    `).get(conversationId, tenantId) as any;
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    const messages = db.prepare(`
+      SELECT sender_id, text, created_at
+      FROM messages
+      WHERE conversation_id = ?
+      ORDER BY created_at DESC
+      LIMIT 20
+    `).all(conversationId).reverse();
+
+    const system = `
+Você é um assistente de atendimento comercial dentro de um CRM conversacional.
+Sua função é sugerir uma resposta para o atendente humano.
+Não envie mensagem diretamente ao cliente.
+Use tom: ${settings.tone || 'profissional, claro e cordial'}.
+Contexto da empresa: ${settings.company_context || 'Não informado'}.
+Regras comerciais: ${settings.business_rules || 'Não informado'}.
+Responda em português do Brasil. Apenas forneça o texto sugerido para a resposta.
+`;
+
+    const user = JSON.stringify({
+      lead: {
+        name: conversation.lead_name,
+        phone: conversation.lead_phone,
+        email: conversation.lead_email,
+        company: conversation.lead_company,
+      },
+      messages,
+      instruction: 'Sugira uma resposta curta, humana e útil para o atendente enviar ao cliente.'
+    });
+
+    const ai = await generateAiResponse({ system, user, model: settings.model });
+
+    const usage = (ai.usage as any) || {};
+    const inputTokens = usage.prompt_tokens || 0;
+    const outputTokens = usage.completion_tokens || 0;
+    const totalTokens = usage.total_tokens || inputTokens + outputTokens;
+
+    const logId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO ai_usage_logs
+      (id, tenant_id, user_id, conversation_id, lead_id, action, model, input_tokens, output_tokens, total_tokens, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      logId,
+      tenantId,
+      userId,
+      conversationId,
+      conversation.lead_id,
+      'suggest_reply',
+      ai.model,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      'success'
+    );
+
+    res.json({
+      suggestion: ai.text,
+      usage: {
+        inputTokens,
+        outputTokens,
+        totalTokens
+      }
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/summarize-conversation', authenticate, async (req: any, res: any) => {
+  const { tenantId, id: userId } = req.user;
+  const { conversationId } = req.body;
+
+  try {
+    const settings = ensureTenantCanUseAi(tenantId);
+
+    const conversation = db.prepare(`
+      SELECT c.*, l.id as lead_id, l.name as lead_name, l.phone as lead_phone, l.email as lead_email
+      FROM conversations c
+      JOIN leads l ON l.id = c.lead_id
+      WHERE c.id = ? AND c.tenant_id = ?
+    `).get(conversationId, tenantId) as any;
+
+    if (!conversation) {
+      return res.status(404).json({ error: 'Conversa não encontrada' });
+    }
+
+    const messages = db.prepare(`
+      SELECT sender_id, text, created_at
+      FROM messages
+      WHERE conversation_id = ?
+      ORDER BY created_at ASC
+    `).all(conversationId);
+
+    const system = `
+Você é um assistente de CRM.
+Resuma uma conversa de atendimento e devolva um JSON válido.
+Não inclua formatação markdown na resposta (como \`\`\`json). Devolva apenas o JSON.
+`;
+
+    const user = `
+Retorne exatamente neste formato JSON:
+{
+  "resumo": "",
+  "pontos_importantes": [],
+  "pendencias": [],
+  "proxima_acao": "",
+  "sentimento": "positivo | neutro | negativo",
+  "temperatura": "frio | morno | quente"
+}
+
+Lead: ${conversation.lead_name}
+Mensagens: ${JSON.stringify(messages)}
+`;
+
+    const ai = await generateAiResponse({ system, user, model: settings.model, temperature: 0.2 });
+
+    let parsed;
+    try {
+      let cleanText = ai.text.replace(/^\`\`\`json/m, '').replace(/\`\`\`$/m, '').trim();
+      parsed = JSON.parse(cleanText || '{}');
+    } catch {
+      parsed = { resumo: ai.text };
+    }
+
+    const usage = (ai.usage as any) || {};
+    const inputTokens = usage.prompt_tokens || 0;
+    const outputTokens = usage.completion_tokens || 0;
+    const totalTokens = usage.total_tokens || inputTokens + outputTokens;
+
+    const logId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO ai_usage_logs
+      (id, tenant_id, user_id, conversation_id, lead_id, action, model, input_tokens, output_tokens, total_tokens, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(logId, tenantId, userId, conversationId, conversation.lead_id, 'summarize_conversation', ai.model, inputTokens, outputTokens, totalTokens, 'success');
+
+    res.json(parsed);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/ai/classify-lead', authenticate, async (req: any, res: any) => {
+  const { tenantId, id: userId } = req.user;
+  const { leadId } = req.body;
+
+  try {
+    const settings = ensureTenantCanUseAi(tenantId);
+
+    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND tenant_id = ?').get(leadId, tenantId) as any;
+    if (!lead) {
+      return res.status(404).json({ error: 'Lead não encontrado' });
+    }
+
+    const conversations = db.prepare('SELECT id FROM conversations WHERE lead_id = ?').all(leadId);
+    let allMessages: any[] = [];
+    
+    for (const conv of conversations) {
+      const messages = db.prepare('SELECT sender_id, text, created_at FROM messages WHERE conversation_id = ? ORDER BY created_at ASC').all((conv as any).id);
+      allMessages = [...allMessages, ...messages];
+    }
+
+    const system = `
+Você é um assistente de CRM.
+Classifique um lead baseado no seu cadastro e histórico de conversa, devolvendo um JSON válido.
+Não inclua formatação markdown na resposta (como \`\`\`json). Devolva apenas o JSON.
+`;
+
+    const user = `
+Retorne exatamente neste formato JSON:
+{
+  "intencao": "compra | suporte | dúvida | reclamação | orçamento | parceria | outro",
+  "temperatura": "frio | morno | quente",
+  "prioridade": "baixa | média | alta",
+  "sentimento": "positivo | neutro | negativo",
+  "resumo_comercial": "",
+  "proxima_acao": ""
+}
+
+Lead: ${JSON.stringify(lead)}
+Mensagens: ${JSON.stringify(allMessages)}
+`;
+
+    const ai = await generateAiResponse({ system, user, model: settings.model, temperature: 0.2 });
+
+    let parsed;
+    try {
+      let cleanText = ai.text.replace(/^\`\`\`json/m, '').replace(/\`\`\`$/m, '').trim();
+      parsed = JSON.parse(cleanText || '{}');
+    } catch {
+      parsed = { resumo_comercial: ai.text };
+    }
+
+    const usage = (ai.usage as any) || {};
+    const inputTokens = usage.prompt_tokens || 0;
+    const outputTokens = usage.completion_tokens || 0;
+    const totalTokens = usage.total_tokens || inputTokens + outputTokens;
+
+    const logId = crypto.randomUUID();
+    db.prepare(`
+      INSERT INTO ai_usage_logs
+      (id, tenant_id, user_id, lead_id, action, model, input_tokens, output_tokens, total_tokens, status)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(logId, tenantId, userId, leadId, 'classify_lead', ai.model, inputTokens, outputTokens, totalTokens, 'success');
+
+    res.json(parsed);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/master/ai-usage', authenticate, (req: any, res: any) => {
+  if (req.user.role !== 'master') {
+    return res.status(403).json({ error: 'Acesso negado' });
+  }
+
+  const usage = db.prepare(`
+    SELECT 
+      t.id as tenant_id,
+      t.name as tenant_name,
+      COALESCE(s.enabled, 0) as ai_enabled,
+      COALESCE(s.model, 'gpt-4o-mini') as ai_model,
+      COALESCE(s.monthly_token_limit, 100000) as monthly_limit,
+      (SELECT COALESCE(SUM(total_tokens), 0) FROM ai_usage_logs WHERE tenant_id = t.id AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')) as current_usage,
+      (SELECT COUNT(id) FROM ai_usage_logs WHERE tenant_id = t.id AND strftime('%Y-%m', created_at) = strftime('%Y-%m', 'now')) as request_count,
+      (SELECT MAX(created_at) FROM ai_usage_logs WHERE tenant_id = t.id) as last_request
+    FROM tenants t
+    LEFT JOIN ai_settings s ON s.tenant_id = t.id
+  `).all();
+
+  res.json(usage);
+});
