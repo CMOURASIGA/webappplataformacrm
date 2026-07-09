@@ -5,7 +5,7 @@ import { fetchApi } from '../../lib/api';
 
 export default function AiSettings() {
   const [enabled, setEnabled] = useState(false);
-  const [model, setModel] = useState('gpt-4o-mini');
+  const [model, setModel] = useState('');
   const [tone, setTone] = useState('profissional, claro e cordial');
   const [companyContext, setCompanyContext] = useState('');
   const [businessRules, setBusinessRules] = useState('');
@@ -17,7 +17,7 @@ export default function AiSettings() {
       try {
         const data = await fetchApi('/ai/settings');
         setEnabled(Boolean(data.enabled));
-        setModel(data.model || 'gpt-4o-mini');
+        setModel(data.model || '');
         setTone(data.tone || 'profissional, claro e cordial');
         setCompanyContext(data.company_context || '');
         setBusinessRules(data.business_rules || '');

@@ -1,14 +1,14 @@
 import fs from 'fs';
-
 let content = fs.readFileSync('src/App.tsx', 'utf-8');
 
-const importStr = "import Settings from './pages/admin/Settings';";
-const newImportStr = importStr + "\nimport AiSettings from './pages/settings/AiSettings';";
-
-const routeStr = '<Route path="settings" element={<Settings />} />';
-const newRouteStr = routeStr + '\n          <Route path="settings/ai" element={<AiSettings />} />';
-
-content = content.replace(importStr, newImportStr).replace(routeStr, newRouteStr);
-
-fs.writeFileSync('src/App.tsx', content);
-console.log("Patched App.tsx");
+if (!content.includes('import Users')) {
+   content = content.replace(
+     "import Settings from './pages/admin/Settings';",
+     "import Settings from './pages/admin/Settings';\nimport Users from './pages/admin/Users';"
+   );
+   content = content.replace(
+     '<Route path="settings" element={<Settings />} />',
+     '<Route path="settings" element={<Settings />} />\n          <Route path="users" element={<Users />} />'
+   );
+   fs.writeFileSync('src/App.tsx', content);
+}

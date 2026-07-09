@@ -54,7 +54,8 @@ interface AppState {
   // Chat
   addConversation: (leadId: string, tenantId: string) => Promise<void>;
   addMessage: (conversationId: string, senderId: string, text: string) => Promise<void>;
-  assignConversation: (conversationId: string, userId: string) => void;
+  assignConversation: (conversationId: string, userId: string) => Promise<void>;
+  updateConversationStatus: (conversationId: string, status: any, closeReason?: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
   
   createQuickReply: (title: string, text: string) => Promise<void>;
@@ -371,10 +372,27 @@ export const useStore = create<AppState>()(
         }
       },
 
-      assignConversation: (conversationId, userId) => {
-        set(state => ({
-          conversations: state.conversations.map(c => c.id === conversationId ? { ...c, assignedTo: userId, status: 'in_progress' } : c)
-        }));
+      assignConversation: async (conversationId, userId) => {
+        try {
+           await fetchApi(`/conversations/${conversationId}/assign`, {
+              method: 'PATCH',
+              body: JSON.stringify({ assigned_to: userId })
+           });
+           set(state => ({
+             conversations: state.conversations.map(c => c.id === conversationId ? { ...c, assignedTo: userId, status: 'in_progress' } : c)
+           }));
+        } catch (e) { console.error("Failed to assign", e); }
+      },
+      updateConversationStatus: async (conversationId, status, closeReason) => {
+        try {
+           await fetchApi(`/conversations/${conversationId}/status`, {
+              method: 'PATCH',
+              body: JSON.stringify({ status, close_reason: closeReason })
+           });
+           set(state => ({
+             conversations: state.conversations.map(c => c.id === conversationId ? { ...c, status } : c)
+           }));
+        } catch (e) { console.error("Failed to update status", e); }
       },
 
       createQuickReply: async (title, text) => {

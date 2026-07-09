@@ -19,6 +19,8 @@ export default function Chat() {
   const pipelines = useStore(state => state.pipelines);
   
   const addMessage = useStore(state => state.addMessage);
+  const assignConversation = useStore(state => state.assignConversation);
+  const updateConversationStatus = useStore(state => state.updateConversationStatus);
   const addConversation = useStore(state => state.addConversation);
   const moveLead = useStore(state => state.moveLead);
   const fetchMessages = useStore(state => state.fetchMessages);
@@ -205,7 +207,22 @@ export default function Chat() {
                   <FileText size={14} className="mr-1" />
                   Resumir
                 </Button>
-                <Button variant="outline" size="sm">Encerrar</Button>
+                
+                {activeConversation && (!activeConversation.assignedTo || activeConversation.status === 'unassigned' || activeConversation.status === 'new') && (
+                   <Button variant="outline" size="sm" onClick={() => assignConversation(activeConversation.id, currentUser!.id)}>
+                     Assumir
+                   </Button>
+                )}
+                {activeConversation && activeConversation.status !== 'closed' && (
+                   <Button variant="outline" size="sm" onClick={() => updateConversationStatus(activeConversation.id, 'closed', 'Resolvido')}>
+                     Encerrar
+                   </Button>
+                )}
+                {activeConversation && activeConversation.status === 'closed' && (
+                   <Button variant="outline" size="sm" onClick={() => updateConversationStatus(activeConversation.id, 'reopened', '')}>
+                     Reabrir
+                   </Button>
+                )}
               </div>
             </div>
 
@@ -295,8 +312,7 @@ export default function Chat() {
 
             <div className="p-4 bg-white border-t border-slate-100">
               <form onSubmit={handleSend} className="space-y-2">
-                {quickReplies.length > 0 && (
-                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                     <button
                         type="button"
                         onClick={handleSuggestReply}
@@ -305,7 +321,7 @@ export default function Chat() {
                       >
                         <Sparkles size={12} /> IA Sugerir
                       </button>
-                      {quickReplies.map(qr => (
+                    {quickReplies.length > 0 && quickReplies.map(qr => (
                       <button
                         key={qr.id}
                         type="button"
@@ -316,7 +332,6 @@ export default function Chat() {
                       </button>
                     ))}
                   </div>
-                )}
                 <div className="flex gap-2 items-end bg-white p-2 rounded-lg border border-slate-200 shadow-sm relative">
                   <div className="flex-1">
                     <ReactQuill 

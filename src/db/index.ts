@@ -28,6 +28,11 @@ try {
   // column already exists
 }
 
+
+try {
+  db.exec("ALTER TABLE messages ADD COLUMN sender_type TEXT DEFAULT 'user'");
+} catch (e) {}
+
 // Ensure at least one master user exists
 const masterExists = db.prepare('SELECT * FROM users WHERE role = ?').get('master');
 if (!masterExists) {

@@ -78,7 +78,7 @@ export interface Conversation {
   tenantId: string;
   leadId: string;
   assignedTo?: string; // userId
-  status: 'new' | 'waiting' | 'in_progress' | 'waiting_client' | 'closed' | 'transferred';
+  status: 'new' | 'unassigned' | 'assigned' | 'in_progress' | 'waiting_customer' | 'waiting_agent' | 'closed' | 'reopened' | 'transferred';
   createdAt: string;
   updatedAt: string;
 }

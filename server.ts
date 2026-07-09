@@ -22,6 +22,29 @@ app.use(express.json({ limit: '50mb' }));
 
 // API Routes
 
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', message: 'SaaS CRM Backend is running' });
+});
+
+// Middleware to protect routes
+const authenticate = (req: any, res: any, next: any) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET);
+    req.user = decoded;
+    
+    // Master impersonation logic: if master provides a tenant ID header, use it
+    if (req.user.role === 'master' && req.headers['x-tenant-id']) {
+      req.user.tenantId = req.headers['x-tenant-id'];
+    }
+    
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Invalid token' });
+  }
+};
 // Dashboard Endpoints
 app.get('/api/dashboard/master', authenticate, (req: any, res: any) => {
   if (req.user.role !== 'master') {
@@ -70,6 +93,50 @@ app.get('/api/dashboard/master', authenticate, (req: any, res: any) => {
     });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+
+app.get('/api/users', authenticate, (req: any, res: any) => {
+  const { tenantId, role } = req.user;
+  
+  if (role === 'master') {
+    const users = db.prepare('SELECT id, name, email, role, tenant_id FROM users').all();
+    return res.json(users);
+  }
+  
+  const users = db.prepare('SELECT id, name, email, role FROM users WHERE tenant_id = ?').all(tenantId);
+  res.json(users);
+});
+
+app.post('/api/users', authenticate, (req: any, res: any) => {
+  const { tenantId, role } = req.user;
+  if (role !== 'admin' && role !== 'master') {
+    return res.status(403).json({ error: 'Não autorizado' });
+  }
+
+  const { name, email, password, role: newRole } = req.body;
+  if (!name || !email || !password) return res.status(400).json({ error: 'Dados inválidos' });
+  
+  try {
+    const hash = bcrypt.hashSync(password, 10);
+    const newId = Math.random().toString(36).substring(2, 9);
+    
+    db.prepare('INSERT INTO users (id, tenant_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)').run(
+      newId, tenantId, name, email, hash, newRole === 'admin' ? 'admin' : 'user'
+    );
+    
+    db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type, entity_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+      Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'Usuário Criado', 'users', newId
+    );
+    
+    res.json({ success: true, id: newId });
+  } catch (err: any) {
+    if (err.message.includes('UNIQUE constraint failed')) {
+      res.status(400).json({ error: 'E-mail já cadastrado' });
+    } else {
+      res.status(500).json({ error: 'Erro ao criar usuário' });
+    }
   }
 });
 
@@ -140,11 +207,12 @@ app.get('/api/dashboard/tenant', authenticate, (req: any, res: any) => {
     // Leads by stage (Pipeline)
     const leadsByStageQuery = `
       SELECT s.name as stage_name, COUNT(l.id) as count 
-      FROM stages s
-      LEFT JOIN leads l ON l.stage_id = s.id AND l.${leadFilter.replace('tenant_id', 'l.tenant_id')}
-      WHERE s.tenant_id = ?
+      FROM pipeline_stages s
+      JOIN pipelines p ON s.pipeline_id = p.id
+      LEFT JOIN leads l ON l.stage_id = s.id AND ${leadFilter.replace('tenant_id', 'l.tenant_id')}
+      WHERE p.tenant_id = ?
       GROUP BY s.id
-      ORDER BY s.order_index ASC
+      ORDER BY s."order" ASC
     `;
     let stageParams = [tenantId, ...leadParams];
     const leadsByStage = db.prepare(leadsByStageQuery).all(...stageParams) as any[];
@@ -161,29 +229,6 @@ app.get('/api/dashboard/tenant', authenticate, (req: any, res: any) => {
     res.status(500).json({ error: err.message });
   }
 });
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'SaaS CRM Backend is running' });
-});
-
-// Middleware to protect routes
-const authenticate = (req: any, res: any, next: any) => {
-  const token = req.headers.authorization?.split(' ')[1];
-  if (!token) return res.status(401).json({ error: 'Unauthorized' });
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET);
-    req.user = decoded;
-    
-    // Master impersonation logic: if master provides a tenant ID header, use it
-    if (req.user.role === 'master' && req.headers['x-tenant-id']) {
-      req.user.tenantId = req.headers['x-tenant-id'];
-    }
-    
-    next();
-  } catch (err) {
-    res.status(401).json({ error: 'Invalid token' });
-  }
-};
 
 // Auth
 app.post('/api/auth/login', (req, res) => {
@@ -566,6 +611,71 @@ app.get('/api/conversations/:id/messages', authenticate, (req: any, res: any) =>
   res.json(messages);
 });
 
+
+app.patch('/api/conversations/:id/assign', authenticate, (req: any, res: any) => {
+  const { tenantId, id: currentUserId, role } = req.user;
+  const { id } = req.params;
+  const { assigned_to } = req.body;
+  
+  const conv = db.prepare('SELECT * FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId) as any;
+  if (!conv) return res.status(404).json({ error: 'Conversa não encontrada' });
+  
+  if (role !== 'admin' && role !== 'master') {
+     if (conv.assigned_to && conv.assigned_to !== currentUserId && assigned_to !== currentUserId) {
+        return res.status(403).json({ error: 'Não autorizado a atribuir esta conversa' });
+     }
+  }
+
+  db.prepare('UPDATE conversations SET assigned_to = ?, status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+    assigned_to,
+    'in_progress',
+    id
+  );
+  
+  db.prepare('INSERT INTO conversation_events (id, tenant_id, conversation_id, event_type, from_user_id, to_user_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+    Math.random().toString(36).substring(2, 9),
+    tenantId,
+    id,
+    'assigned',
+    currentUserId,
+    assigned_to
+  );
+
+  res.json({ success: true });
+});
+
+app.patch('/api/conversations/:id/status', authenticate, (req: any, res: any) => {
+  const { tenantId, id: currentUserId, role } = req.user;
+  const { id } = req.params;
+  const { status, close_reason } = req.body;
+  
+  const conv = db.prepare('SELECT * FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId) as any;
+  if (!conv) return res.status(404).json({ error: 'Conversa não encontrada' });
+  
+  if (role !== 'admin' && role !== 'master' && conv.assigned_to !== currentUserId) {
+      return res.status(403).json({ error: 'Não autorizado' });
+  }
+
+  if (status === 'closed') {
+    db.prepare('UPDATE conversations SET status = ?, closed_at = CURRENT_TIMESTAMP, closed_by = ?, close_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      status, currentUserId, close_reason || null, id
+    );
+  } else {
+    db.prepare('UPDATE conversations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(status, id);
+  }
+  
+  db.prepare('INSERT INTO conversation_events (id, tenant_id, conversation_id, event_type, from_user_id, metadata) VALUES (?, ?, ?, ?, ?, ?)').run(
+    Math.random().toString(36).substring(2, 9),
+    tenantId,
+    id,
+    'status_changed',
+    currentUserId,
+    status
+  );
+
+  res.json({ success: true });
+});
+
 app.post('/api/conversations/:id/messages', authenticate, (req: any, res: any) => {
   const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
@@ -611,7 +721,114 @@ async function startServer() {
     res.status(err.status || 500).json({ error: err.message });
   });
 
-  app.listen(PORT, '0.0.0.0', () => {
+  
+app.get('/api/whatsapp/status', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
+  res.json(connection || null);
+});
+
+app.post('/api/whatsapp/connect', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  const { code } = req.body; // Mocked code
+  
+  const existing = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
+  
+  if (existing) {
+     db.prepare('UPDATE whatsapp_connections SET connection_status = ?, phone_number_id = ?, waba_id = ?, display_phone_number = ?, connected_at = CURRENT_TIMESTAMP WHERE tenant_id = ?').run(
+       'connected', '1234567890', '0987654321', '+55 11 99999-9999', tenantId
+     );
+  } else {
+     db.prepare('INSERT INTO whatsapp_connections (id, tenant_id, connection_status, phone_number_id, waba_id, display_phone_number, connected_at) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').run(
+       Math.random().toString(36).substring(2, 9), tenantId, 'connected', '1234567890', '0987654321', '+55 11 99999-9999'
+     );
+  }
+  
+  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
+    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Conectado', 'whatsapp_connections'
+  );
+  
+  res.json({ success: true });
+});
+
+app.post('/api/whatsapp/disconnect', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  db.prepare('DELETE FROM whatsapp_connections WHERE tenant_id = ?').run(tenantId);
+  
+  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
+    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Desconectado', 'whatsapp_connections'
+  );
+  
+  res.json({ success: true });
+});
+
+app.get('/api/meta/webhook', (req: any, res: any) => {
+  // Hub challenge for Meta
+  if (req.query['hub.mode'] === 'subscribe' && req.query['hub.verify_token'] === process.env.META_VERIFY_TOKEN) {
+    res.send(req.query['hub.challenge']);
+  } else {
+    res.sendStatus(400);
+  }
+});
+
+app.post('/api/meta/webhook', (req: any, res: any) => {
+  const body = req.body;
+  
+  if (body.object === 'whatsapp_business_account') {
+    // Implementação básica de recebimento para o MVP
+    console.log("Recebido Webhook do WhatsApp", JSON.stringify(body));
+    
+    body.entry?.forEach((entry: any) => {
+       entry.changes?.forEach((change: any) => {
+          if (change.value && change.value.messages) {
+              const phoneNumberId = change.value.metadata.phone_number_id;
+              const msg = change.value.messages[0];
+              const fromPhone = msg.from;
+              
+              const connection = db.prepare('SELECT tenant_id FROM whatsapp_connections WHERE phone_number_id = ?').get(phoneNumberId) as any;
+              
+              if (connection) {
+                  let lead = db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND phone = ?').get(connection.tenant_id, fromPhone) as any;
+                  if (!lead) {
+                      const newLeadId = Math.random().toString(36).substring(2, 9);
+                      db.prepare('INSERT INTO leads (id, tenant_id, name, phone, source) VALUES (?, ?, ?, ?, ?)').run(
+                         newLeadId, connection.tenant_id, 'Lead ' + fromPhone, fromPhone, 'whatsapp'
+                      );
+                      lead = { id: newLeadId, tenant_id: connection.tenant_id };
+                  }
+                  
+                  let conv = db.prepare('SELECT * FROM conversations WHERE tenant_id = ? AND lead_id = ? AND status != ?').get(connection.tenant_id, lead.id, 'closed') as any;
+                  if (!conv) {
+                      const newConvId = Math.random().toString(36).substring(2, 9);
+                      db.prepare('INSERT INTO conversations (id, tenant_id, lead_id, protocol_number) VALUES (?, ?, ?, ?)').run(
+                         newConvId, connection.tenant_id, lead.id, 'WAPP-' + Date.now()
+                      );
+                      conv = { id: newConvId };
+                  } else if (conv.status === 'closed') {
+                     db.prepare('UPDATE conversations SET status = ? WHERE id = ?').run('reopened', conv.id);
+                  }
+                  
+                  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, text, external_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+                      Math.random().toString(36).substring(2, 9),
+                      conv.id,
+                      lead.id,
+                      'lead',
+                      'inbound',
+                      msg.text?.body || '[Arquivo]',
+                      msg.id
+                  );
+              }
+          }
+       });
+    });
+    
+    res.sendStatus(200);
+  } else {
+    res.sendStatus(404);
+  }
+});
+
+app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
@@ -637,7 +854,7 @@ function ensureTenantCanUseAi(tenantId: string) {
   let settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
 
   if (!settings) {
-    db.prepare('INSERT INTO ai_settings (tenant_id) VALUES (?)').run(tenantId);
+    db.prepare('INSERT INTO ai_settings (tenant_id, model) VALUES (?, ?)').run(tenantId, process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini');
     settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
   }
 
@@ -657,10 +874,11 @@ function ensureTenantCanUseAi(tenantId: string) {
 
 app.get('/api/ai/settings', authenticate, (req: any, res: any) => {
   const { tenantId } = req.user;
+  if (!tenantId) return res.json({ enabled: 0, model: process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini', tone: '', company_context: '', business_rules: '', monthly_token_limit: 100000, current_usage: 0 });
   
   let settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
   if (!settings) {
-    db.prepare('INSERT INTO ai_settings (tenant_id) VALUES (?)').run(tenantId);
+    db.prepare('INSERT INTO ai_settings (tenant_id, model) VALUES (?, ?)').run(tenantId, process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini');
     settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
   }
   
@@ -674,11 +892,12 @@ app.patch('/api/ai/settings', authenticate, (req: any, res: any) => {
   }
 
   const { tenantId } = req.user;
+  if (!tenantId) return res.status(400).json({ error: 'Tenant ID required' });
   const { enabled, model, tone, company_context, business_rules, monthly_token_limit } = req.body;
   
   let existing = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
   if (!existing) {
-    db.prepare('INSERT INTO ai_settings (tenant_id) VALUES (?)').run(tenantId);
+    db.prepare('INSERT INTO ai_settings (tenant_id, model) VALUES (?, ?)').run(tenantId, process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini');
   }
 
   db.prepare(`
@@ -687,7 +906,7 @@ app.patch('/api/ai/settings', authenticate, (req: any, res: any) => {
     WHERE tenant_id = ?
   `).run(
     enabled ? 1 : 0, 
-    model || 'gpt-4o-mini', 
+    model || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini', 
     tone || '', 
     company_context || '', 
     business_rules || '', 
