@@ -4,6 +4,30 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Upload, Image as ImageIcon } from 'lucide-react';
 
+function darkenColor(hex: string, percent: number) {
+  const num = parseInt(hex.replace('#', ''), 16);
+  let r = (num >> 16) - percent;
+  let g = ((num >> 8) & 0x00ff) - percent;
+  let b = (num & 0x0000ff) - percent;
+
+  r = Math.max(0, r);
+  g = Math.max(0, g);
+  b = Math.max(0, b);
+
+  return '#' + (0x1000000 + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
+}
+
+function getContrastColor(hex: string) {
+  const color = hex.replace('#', '');
+  const r = parseInt(color.substring(0, 2), 16);
+  const g = parseInt(color.substring(2, 4), 16);
+  const b = parseInt(color.substring(4, 6), 16);
+
+  const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+
+  return brightness > 150 ? '#0F172A' : '#FFFFFF';
+}
+
 export default function Settings() {
   const currentUser = useStore(state => state.currentUser);
   const tenants = useStore(state => state.tenants);
@@ -84,6 +108,9 @@ export default function Settings() {
             
             const hex = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1).toUpperCase();
             setPrimaryColor(hex);
+            const darkened = darkenColor(hex, 35);
+            setSidebarColor(darkened);
+            setSidebarTextColor(getContrastColor(darkened));
           }
         } catch (error) {
           console.error("Could not extract color", error);
@@ -94,12 +121,18 @@ export default function Settings() {
     reader.readAsDataURL(file);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (tenant) {
-      updateTenantSettings(tenant.id, { companyName, primaryColor, logoUrl, sidebarColor, sidebarTextColor });
-      alert('Settings saved!');
-    }
+    if (!tenant) return;
+
+    await updateTenantSettings(tenant.id, { 
+      companyName, 
+      primaryColor, 
+      logoUrl, 
+      sidebarColor, 
+      sidebarTextColor 
+    });
+    alert('Configurações salvas!');
   };
 
   if (!tenant) return (

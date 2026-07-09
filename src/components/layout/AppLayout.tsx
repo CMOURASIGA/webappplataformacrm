@@ -1,20 +1,29 @@
-import React from 'react';
-import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom';
-import { useStore } from '../../store';
-import { 
-  Users, 
-  LayoutDashboard, 
-  MessageSquare, 
-  Settings, 
+import React from "react";
+import { Outlet, NavLink, useNavigate, Navigate } from "react-router-dom";
+import { useStore } from "../../store";
+import {
+  Users,
+  LayoutDashboard,
+  MessageSquare,
+  Settings,
   LogOut,
   Building2,
   Trello,
-  Smartphone
-} from 'lucide-react';
-import { cn } from '../../lib/utils';
+  Smartphone,
+} from "lucide-react";
+import { cn } from "../../lib/utils";
+import { useApplyTenantTheme } from "../../hooks/useApplyTenantTheme";
 
 export function AppLayout() {
-  const { currentUser, tenants, isInitialized, initializeData, logout, activeTenantId, setActiveTenantId } = useStore();
+  const {
+    currentUser,
+    tenants,
+    isInitialized,
+    initializeData,
+    logout,
+    activeTenantId,
+    setActiveTenantId,
+  } = useStore();
   const navigate = useNavigate();
 
   React.useEffect(() => {
@@ -23,106 +32,183 @@ export function AppLayout() {
     }
   }, [currentUser, isInitialized, initializeData]);
 
-  if (!currentUser || !localStorage.getItem('token')) {
+
+  const isMaster = currentUser?.role === "master";
+  const tenant = tenants.find(
+    (t) => t.id === (isMaster ? activeTenantId : currentUser?.tenantId),
+  );
+
+  const primaryColor = tenant?.settings?.primaryColor || "#4f46e5";
+  const sidebarColor = tenant?.settings?.sidebarColor || "#0F172A";
+  const sidebarTextColor = tenant?.settings?.sidebarTextColor || "#cbd5e1";
+
+  useApplyTenantTheme({
+    primaryColor,
+    sidebarColor,
+    sidebarTextColor,
+  });
+
+  if (!currentUser || !localStorage.getItem("token")) {
     return <Navigate to="/login" replace />;
   }
 
   // Show a loading screen while initializing
   if (!isInitialized) {
-    return <div className="flex h-screen items-center justify-center bg-slate-50"><p className="text-slate-500 font-medium">Carregando...</p></div>;
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <p className="text-slate-500 font-medium">Carregando...</p>
+      </div>
+    );
   }
 
-  const isMaster = currentUser.role === 'master';
-  const tenant = tenants.find(t => t.id === (isMaster ? activeTenantId : currentUser.tenantId));
-  const primaryColor = tenant?.settings?.primaryColor || '#4f46e5';
-  const sidebarColor = tenant?.settings?.sidebarColor || '#0F172A';
-  const sidebarTextColor = tenant?.settings?.sidebarTextColor || '#cbd5e1';
 
   const operationalNavigation = [
-    { 
-      title: 'Geral', 
+    {
+      title: "Geral",
       items: [
-        { name: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, adminOnly: false },
-      ]
+        {
+          name: "Dashboard",
+          href: "/dashboard",
+          icon: <LayoutDashboard size={16} />,
+          adminOnly: false,
+        },
+      ],
     },
     {
-      title: 'Chat / Mensagens',
+      title: "Chat / Mensagens",
       items: [
-        { name: 'Conversas', href: '/chat', icon: <MessageSquare size={16} />, adminOnly: false },
-        { name: 'Respostas Rápidas', href: '/chat/quick-replies', icon: <MessageSquare size={16} />, adminOnly: true },
-      ]
+        {
+          name: "Conversas",
+          href: "/chat",
+          icon: <MessageSquare size={16} />,
+          adminOnly: false,
+        },
+        {
+          name: "Respostas Rápidas",
+          href: "/chat/quick-replies",
+          icon: <MessageSquare size={16} />,
+          adminOnly: true,
+        },
+      ],
     },
     {
-      title: 'CRM / Kanban',
+      title: "CRM / Kanban",
       items: [
-        { name: 'Kanban (Leads)', href: '/crm', icon: <Trello size={16} />, adminOnly: false },
-        { name: 'Lista de Leads', href: '/leads', icon: <Users size={16} />, adminOnly: false },
-        { name: 'Configuração Kanban', href: '/settings/kanban', icon: <Settings size={16} />, adminOnly: true },
-      ]
+        {
+          name: "Kanban (Leads)",
+          href: "/crm",
+          icon: <Trello size={16} />,
+          adminOnly: false,
+        },
+        {
+          name: "Lista de Leads",
+          href: "/leads",
+          icon: <Users size={16} />,
+          adminOnly: false,
+        },
+        {
+          name: "Configuração Kanban",
+          href: "/settings/kanban",
+          icon: <Settings size={16} />,
+          adminOnly: true,
+        },
+      ],
     },
     {
-      title: 'Configurações',
+      title: "Configurações",
       items: [
-        { name: 'White Label', href: '/settings', icon: <Settings size={16} />, adminOnly: true },
-        { name: 'WhatsApp/Meta', href: '/settings/whatsapp', icon: <Smartphone size={16} />, adminOnly: true },
-      ]
-    }
+        {
+          name: "White Label",
+          href: "/settings",
+          icon: <Settings size={16} />,
+          adminOnly: true,
+        },
+        {
+          name: "WhatsApp/Meta",
+          href: "/settings/whatsapp",
+          icon: <Smartphone size={16} />,
+          adminOnly: true,
+        },
+      ],
+    },
   ];
 
   const masterNavigation = [
-    { name: 'Dashboard Master', href: '/master/dashboard', icon: <LayoutDashboard size={16} /> },
-    { name: 'Tenants (Clientes)', href: '/master/tenants', icon: <Building2 size={16} /> },
+    {
+      name: "Dashboard Master",
+      href: "/master/dashboard",
+      icon: <LayoutDashboard size={16} />,
+    },
+    {
+      name: "Tenants (Clientes)",
+      href: "/master/tenants",
+      icon: <Building2 size={16} />,
+    },
   ];
 
-  const filteredOperationalNav = operationalNavigation.map(group => ({
-    ...group,
-    items: group.items.filter(nav => {
-      if (nav.adminOnly && currentUser.role !== 'admin' && !isMaster) return false;
-      return true;
-    })
-  })).filter(group => group.items.length > 0);
+  const filteredOperationalNav = operationalNavigation
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((nav) => {
+        if (nav.adminOnly && currentUser.role !== "admin" && !isMaster)
+          return false;
+        return true;
+      }),
+    }))
+    .filter((group) => group.items.length > 0);
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate("/login");
   };
 
   return (
-    <div 
-      className="flex h-screen w-full bg-[#F1F5F9] font-sans text-slate-900 overflow-hidden"
-      style={{ '--primary-color': primaryColor } as React.CSSProperties}
-    >
+    <div className="flex h-screen w-full bg-[#F1F5F9] font-sans text-slate-900 overflow-hidden">
       {/* Sidebar */}
-      <aside 
+      <aside
         className="w-64 flex-shrink-0 flex flex-col transition-colors duration-300"
-        style={{ 
-          backgroundColor: sidebarColor, 
-          color: sidebarTextColor,
-          borderRight: `1px solid ${sidebarColor}`
+        style={{
+          backgroundColor: "var(--sidebar-color)",
+          color: "var(--sidebar-text-color)",
+          borderRight: `1px solid var(--sidebar-color)`,
         }}
       >
         <div className="p-6 flex items-center gap-3 border-b border-black/10">
           {tenant?.settings?.logoUrl ? (
-            <img src={tenant.settings.logoUrl} alt="Logo" className="h-8 max-w-[120px] object-contain" />
+            <img
+              src={tenant.settings.logoUrl}
+              alt="Logo"
+              className="h-8 max-w-[120px] object-contain"
+            />
           ) : (
-            <div 
+            <div
               className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold"
               style={{ backgroundColor: primaryColor }}
             >
-              {isMaster ? 'M' : (tenant?.settings?.companyName?.charAt(0) || 'C')}
+              {isMaster ? "M" : tenant?.settings?.companyName?.charAt(0) || "C"}
             </div>
           )}
           <span className="font-bold text-white tracking-tight">
-            {isMaster ? 'Master Panel' : tenant?.settings?.companyName || 'CRM Flow'} <span className="text-xs font-normal opacity-50">MVP</span>
+            {isMaster
+              ? "Master Panel"
+              : tenant?.settings?.companyName || "CRM Flow"}{" "}
+            <span className="text-xs font-normal opacity-50">MVP</span>
           </span>
         </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
           {isMaster && (
             <>
-              <div className="text-[10px] uppercase tracking-widest opacity-50 font-semibold mb-2 px-2 mt-2">Master</div>
+              <div className="text-[10px] uppercase tracking-widest opacity-50 font-semibold mb-2 px-2 mt-2">
+                Master
+              </div>
               {masterNavigation.map((item) => (
-                <NavItem key={item.href} to={item.href} icon={item.icon} label={item.name} />
+                <NavItem
+                  key={item.href}
+                  to={item.href}
+                  icon={item.icon}
+                  label={item.name}
+                />
               ))}
             </>
           )}
@@ -136,7 +222,12 @@ export function AppLayout() {
                   </div>
                   <div className="space-y-1">
                     {group.items.map((item) => (
-                      <NavItem key={item.href} to={item.href} icon={item.icon} label={item.name} />
+                      <NavItem
+                        key={item.href}
+                        to={item.href}
+                        icon={item.icon}
+                        label={item.name}
+                      />
                     ))}
                   </div>
                 </div>
@@ -151,11 +242,15 @@ export function AppLayout() {
               {currentUser.name.charAt(0)}
             </div>
             <div className="flex flex-col truncate">
-              <span className="text-sm font-medium text-current truncate">{currentUser.name}</span>
-              <span className="text-xs opacity-50 capitalize">{currentUser.role}</span>
+              <span className="text-sm font-medium text-current truncate">
+                {currentUser.name}
+              </span>
+              <span className="text-xs opacity-50 capitalize">
+                {currentUser.role}
+              </span>
             </div>
           </div>
-          <button 
+          <button
             onClick={handleLogout}
             className="flex items-center gap-2 text-sm opacity-80 hover:opacity-100 w-full py-2 px-3 rounded hover:bg-black/10 transition-colors"
           >
@@ -171,31 +266,52 @@ export function AppLayout() {
             <h1 className="text-lg font-bold text-slate-800">
               {/* Optional header title or context could go here */}
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">Status: Online</span>
+            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
+              Status: Online
+            </span>
           </div>
-          
+
           <div className="flex items-center gap-6">
-            
             {isMaster && (
               <div className="flex items-center">
-                <span className="text-xs font-bold text-slate-500 mr-2 uppercase">Operar como:</span>
-                <select 
-                  value={activeTenantId || ''} 
+                <span className="text-xs font-bold text-slate-500 mr-2 uppercase">
+                  Operar como:
+                </span>
+                <select
+                  value={activeTenantId || ""}
                   onChange={(e) => setActiveTenantId(e.target.value || null)}
                   className="text-sm border-slate-200 rounded-md bg-slate-50 py-1.5 px-3 focus:ring-primary-500 focus:border-primary-500"
                 >
                   <option value="">-- Visão Master --</option>
-                  {tenants.map(t => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
+                  {tenants.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
                   ))}
                 </select>
               </div>
             )}
 
             <div className="relative hidden md:block">
-              <input type="text" placeholder="Buscar..." className="w-64 pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:ring-2 focus:ring-primary-500 outline-none transition-all" /> 
+              <input
+                type="text"
+                placeholder="Buscar..."
+                className="w-64 pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:ring-2 focus:ring-primary-500 outline-none transition-all"
+              />
               <div className="absolute left-3.5 top-2.5 text-slate-400">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                  ></path>
+                </svg>
               </div>
             </div>
           </div>
@@ -208,17 +324,25 @@ export function AppLayout() {
   );
 }
 
-const NavItem: React.FC<{ to: string, icon: React.ReactNode, label: string }> = ({ to, icon, label }) => {
+const NavItem: React.FC<{
+  to: string;
+  icon: React.ReactNode;
+  label: string;
+}> = ({ to, icon, label }) => {
   return (
     <NavLink
       to={to}
-      className={({ isActive }) => cn(
-        "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-        isActive ? "bg-black/20 text-current font-bold" : "text-current opacity-80 hover:bg-black/10 hover:opacity-100"
-      )}
+      className={({ isActive }) =>
+        cn(
+          "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+          isActive
+            ? "bg-black/20 text-current font-bold"
+            : "text-current opacity-80 hover:bg-black/10 hover:opacity-100",
+        )
+      }
     >
       {icon}
       {label}
     </NavLink>
   );
-}
+};

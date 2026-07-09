@@ -65,11 +65,24 @@ app.get('/api/admin/tenants', authenticate, (req: any, res: any) => {
   if (req.user.role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
   const tenants = db.prepare(`
-    SELECT t.*, ts.company_name, ts.logo_url, ts.primary_color 
+    SELECT t.*, ts.company_name, ts.logo_url, ts.primary_color, ts.sidebar_color, ts.sidebar_text_color 
     FROM tenants t 
     LEFT JOIN tenant_settings ts ON t.id = ts.tenant_id
   `).all();
-  res.json(tenants);
+  
+  res.json(tenants.map((t: any) => ({
+    id: t.id,
+    name: t.name,
+    status: t.status,
+    createdAt: t.created_at,
+    settings: {
+      companyName: t.company_name,
+      logoUrl: t.logo_url,
+      primaryColor: t.primary_color,
+      sidebarColor: t.sidebar_color,
+      sidebarTextColor: t.sidebar_text_color
+    }
+  })));
 });
 
 app.post('/api/admin/tenants', authenticate, (req: any, res: any) => {

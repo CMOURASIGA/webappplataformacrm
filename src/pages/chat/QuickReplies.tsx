@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store';
-import { Plus, Trash2, Edit2, MessageSquare, Smile, X } from 'lucide-react';
+import { Plus, Trash2, MessageSquare, Smile } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 
 export default function QuickReplies() {
-  const quickReplies = useStore(state => state.quickReplies);
+  const quickReplies = useStore(state => state.quickReplies) || [];
   const createQuickReply = useStore(state => state.createQuickReply);
   const deleteQuickReply = useStore(state => state.deleteQuickReply);
   
@@ -31,7 +31,7 @@ export default function QuickReplies() {
   };
 
   return (
-    <div className="space-y-6 relative">
+    <div className="space-y-6">
       <div className="flex justify-between items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Respostas Rápidas</h1>
@@ -45,68 +45,60 @@ export default function QuickReplies() {
       </div>
 
       {isAdding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex justify-between items-center p-6 border-b border-slate-100">
-              <h2 className="text-lg font-bold text-slate-800">Adicionar Nova Resposta</h2>
-              <button onClick={() => setIsAdding(false)} className="text-slate-400 hover:text-slate-600 transition-colors">
-                <X size={20} />
-              </button>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <h2 className="text-lg font-bold text-slate-800 mb-4">Adicionar Nova Resposta</h2>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Título</label>
+              <Input 
+                value={title} 
+                onChange={(e) => setTitle(e.target.value)} 
+                placeholder="Ex: Saudação Inicial"
+                required
+              />
             </div>
             
-            <form onSubmit={handleCreate} className="p-6 space-y-4 overflow-y-auto">
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Título</label>
-                <Input 
-                  value={title} 
-                  onChange={(e) => setTitle(e.target.value)} 
-                  placeholder="Ex: Saudação Inicial"
-                  required
-                />
-              </div>
-              
-              <div>
-                <label className="block text-sm font-bold text-slate-700 mb-1">Mensagem</label>
-                <p className="text-xs text-slate-500 mb-2">Use formatação do WhatsApp: *negrito*, _itálico_, ~tachado~.</p>
-                <div className="relative">
-                  <div className="border border-slate-300 rounded-md overflow-hidden bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
-                    <textarea 
-                      value={text} 
-                      onChange={(e) => setText(e.target.value)} 
-                      className="w-full min-h-[150px] p-3 outline-none resize-y"
-                      placeholder="Sua mensagem..."
-                      required
-                    />
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Mensagem</label>
+              <p className="text-xs text-slate-500 mb-2">Use formatação do WhatsApp: *negrito*, _itálico_, ~tachado~.</p>
+              <div className="relative">
+                <div className="border border-slate-300 rounded-md overflow-hidden bg-white focus-within:ring-2 focus-within:ring-primary-500 focus-within:border-primary-500">
+                  <textarea 
+                    value={text} 
+                    onChange={(e) => setText(e.target.value)} 
+                    className="w-full min-h-[150px] p-3 outline-none resize-y"
+                    placeholder="Sua mensagem..."
+                    required
+                  />
+                  
+                  <div className="absolute top-2 right-2 z-10">
+                    <button 
+                      type="button"
+                      onClick={() => setShowEmoji(!showEmoji)}
+                      className="text-slate-400 hover:text-primary-600 transition-colors bg-white p-1 rounded-md border border-slate-200 shadow-sm"
+                    >
+                      <Smile size={18} />
+                    </button>
                     
-                    <div className="absolute top-2 right-2 z-10">
-                      <button 
-                        type="button"
-                        onClick={() => setShowEmoji(!showEmoji)}
-                        className="text-slate-400 hover:text-primary-600 transition-colors bg-white p-1 rounded-md border border-slate-200 shadow-sm"
-                      >
-                        <Smile size={18} />
-                      </button>
-                      
-                      {showEmoji && (
-                        <div className="absolute right-0 top-10 z-50">
-                          <EmojiPicker onEmojiClick={handleEmojiClick} />
-                        </div>
-                      )}
-                    </div>
+                    {showEmoji && (
+                      <div className="absolute right-0 top-10 z-50">
+                        <EmojiPicker onEmojiClick={handleEmojiClick} />
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-              
-              <div className="flex justify-end gap-2 pt-4">
-                <Button type="button" variant="outline" onClick={() => setIsAdding(false)}>
-                  Cancelar
-                </Button>
-                <Button type="submit">
-                  Salvar
-                </Button>
-              </div>
-            </form>
-          </div>
+            </div>
+            
+            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
+              <Button type="button" variant="outline" onClick={() => setIsAdding(false)}>
+                Cancelar
+              </Button>
+              <Button type="submit">
+                Salvar
+              </Button>
+            </div>
+          </form>
         </div>
       )}
 

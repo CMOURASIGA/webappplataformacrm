@@ -186,7 +186,17 @@ export const useStore = create<AppState>()(
           set(state => ({
             tenants: state.tenants.map(t => 
               t.id === tenantId 
-                ? { ...t, settings: { ...t.settings, ...settings } } 
+                ? { 
+                    ...t, 
+                    settings: { 
+                      ...(t.settings || {}),
+                      companyName: settings.companyName,
+                      primaryColor: settings.primaryColor,
+                      logoUrl: settings.logoUrl,
+                      sidebarColor: settings.sidebarColor,
+                      sidebarTextColor: settings.sidebarTextColor
+                    } 
+                  } 
                 : t
             )
           }));
