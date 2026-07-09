@@ -1,46 +1,123 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { Users, MessageSquare, CheckCircle, Clock } from 'lucide-react';
+import { Navigate } from 'react-router-dom';
+import { fetchApi } from '../lib/api';
+import { Users, MessageSquare, CheckCircle, Clock, Database, Bot, Send, Inbox, Target, AlertTriangle } from 'lucide-react';
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
+} from 'recharts';
 
 export default function Dashboard() {
   const currentUser = useStore(state => state.currentUser);
-  const activeTenantId = useStore(state => state.activeTenantId);
-  const selectedTenantId = currentUser?.role === 'master' ? activeTenantId : currentUser?.tenantId;
-  
-  const leads = useStore(state => state.leads).filter(l => l.tenantId === selectedTenantId);
-  const conversations = useStore(state => state.conversations).filter(c => c.tenantId === selectedTenantId);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  const stats = [
-    { name: 'Total Leads', value: leads.length, icon: Users, color: 'text-primary-600', bg: 'bg-primary-100' },
-    { name: 'Open Chats', value: conversations.filter(c => ['new', 'in_progress'].includes(c.status)).length, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100' },
-    { name: 'Won Leads', value: leads.filter(l => l.status === 'won').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { name: 'Waiting Reply', value: conversations.filter(c => c.status === 'waiting_client').length, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100' },
+  useEffect(() => {
+    if (currentUser?.role === 'master') return;
+
+    fetchApi('/dashboard/tenant')
+      .then(data => {
+        setStats(data);
+        setLoading(false);
+      })
+      .catch(console.error);
+  }, [currentUser]);
+
+  if (!currentUser) return null;
+
+  if (currentUser.role === 'master') {
+    return <Navigate to="/master/dashboard" replace />;
+  }
+
+  if (loading) {
+    return <div className="flex justify-center p-8"><div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div></div>;
+  }
+
+  const isAdmin = currentUser.role === 'admin';
+
+  const cards = [
+    { name: 'Leads Ativos', value: stats.activeLeads, sub: `\${stats.wonLeads} ganhos, \${stats.lostLeads} perdidos`, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { name: 'Conversas Abertas', value: stats.openConversations, sub: `\${stats.closedConversations} finalizadas`, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100' },
+    { name: 'Aguardando Cliente', value: stats.waitingConversations, sub: 'Fila de espera', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100' },
+    { name: 'Mensagens Enviadas', value: stats.sentMessages, sub: `\${stats.receivedMessages} recebidas`, icon: Send, color: 'text-blue-600', bg: 'bg-blue-100' },
   ];
 
+  if (isAdmin) {
+    cards.push({ name: 'Consumo de IA (Tokens)', value: stats.totalAiTokens, sub: `\${stats.totalAiCalls} chamadas`, icon: Bot, color: 'text-rose-600', bg: 'bg-rose-100' });
+  }
+
+  const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#64748b'];
+
   return (
-    <div className="space-y-6">
-      <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">Overview</h1>
-      
-      <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.name} className="bg-white overflow-hidden shadow-sm rounded-xl border border-slate-200">
-            <div className="p-5">
-              <div className="flex items-center">
-                <div className="flex-shrink-0">
-                  <div className={`p-3 rounded-xl ${stat.bg}`}>
-                    <stat.icon className={`h-6 w-6 ${stat.color}`} aria-hidden="true" />
-                  </div>
-                </div>
-                <div className="ml-5 w-0 flex-1">
-                  <dl>
-                    <dt className="text-xs font-bold text-slate-500 uppercase tracking-wider truncate">{stat.name}</dt>
-                    <dd className="text-2xl font-bold text-slate-900 mt-1">{stat.value}</dd>
-                  </dl>
-                </div>
-              </div>
+    <div className="max-w-7xl mx-auto space-y-6 pb-12">
+      <div>
+        <h1 className="text-xl font-bold text-slate-800">
+          Dashboard {isAdmin ? 'Gestão Comercial' : 'Meu Desempenho'}
+        </h1>
+        <p className="text-sm text-slate-500">
+          {isAdmin ? 'Visão completa da sua empresa.' : 'Acompanhamento de seus próprios atendimentos e leads.'}
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        {cards.map(c => (
+          <div key={c.name} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center \${c.bg}`}>
+              <c.icon className={c.color} size={24} />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">{c.name}</div>
+              <div className="text-2xl font-black text-slate-800">{c.value.toLocaleString()}</div>
+              <div className="text-xs text-slate-400 font-medium">{c.sub}</div>
             </div>
           </div>
         ))}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+          <h2 className="text-sm font-bold text-slate-700 uppercase mb-4">Leads por Etapa (Funil)</h2>
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.leadsByStage} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                <XAxis type="number" />
+                <YAxis dataKey="stage_name" type="category" width={100} tick={{fontSize: 12}} />
+                <RechartsTooltip />
+                <Bar dataKey="count" fill="#0ea5e9" name="Quantidade" radius={[0, 4, 4, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {isAdmin && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+            <h2 className="text-sm font-bold text-slate-700 uppercase mb-4">Uso de IA por Recurso</h2>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={stats.aiUsageByAction}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    outerRadius={80}
+                    fill="#8884d8"
+                    dataKey="tokens"
+                    nameKey="action"
+                    label={({ name, percent }) => `\${name} \${(percent * 100).toFixed(0)}%`}
+                  >
+                    {stats.aiUsageByAction.map((entry: any, index: number) => (
+                      <Cell key={`cell-\${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip formatter={(value) => [`\${value} tokens`, 'Consumo']} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

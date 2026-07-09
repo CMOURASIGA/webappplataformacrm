@@ -8,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AppLayout } from './components/layout/AppLayout';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import MasterDashboard from './pages/master/Dashboard';
 import Tenants from './pages/master/Tenants';
 import AiUsage from './pages/master/AiUsage';
 import Kanban from './pages/crm/Kanban';
@@ -36,6 +37,7 @@ export default function App() {
           <Route path="settings" element={<Settings />} />
           <Route path="settings/ai" element={<AiSettings />} />
           <Route path="settings/whatsapp" element={<WhatsAppSettings />} />
+          <Route path="master/dashboard" element={<MasterDashboard />} />
           <Route path="master/tenants" element={<Tenants />} />
           <Route path="master/ai-usage" element={<AiUsage />} />
         </Route>
