@@ -39,13 +39,34 @@ export function AppLayout() {
   const sidebarTextColor = tenant?.settings?.sidebarTextColor || '#cbd5e1';
 
   const operationalNavigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, adminOnly: false },
-    { name: 'Chat', href: '/chat', icon: <MessageSquare size={16} />, adminOnly: false },
-    { name: 'Kanban (Leads)', href: '/crm', icon: <Trello size={16} />, adminOnly: false },
-    { name: 'Configuração Kanban', href: '/settings/kanban', icon: <Settings size={16} />, adminOnly: true },
-    { name: 'Leads List', href: '/leads', icon: <Users size={16} />, adminOnly: false },
-    { name: 'White Label', href: '/settings', icon: <Settings size={16} />, adminOnly: true },
-    { name: 'WhatsApp/Meta', href: '/settings/whatsapp', icon: <Smartphone size={16} />, adminOnly: true },
+    { 
+      title: 'Geral', 
+      items: [
+        { name: 'Dashboard', href: '/dashboard', icon: <LayoutDashboard size={16} />, adminOnly: false },
+      ]
+    },
+    {
+      title: 'Chat / Mensagens',
+      items: [
+        { name: 'Conversas', href: '/chat', icon: <MessageSquare size={16} />, adminOnly: false },
+        { name: 'Respostas Rápidas', href: '/chat/quick-replies', icon: <MessageSquare size={16} />, adminOnly: true },
+      ]
+    },
+    {
+      title: 'CRM / Kanban',
+      items: [
+        { name: 'Kanban (Leads)', href: '/crm', icon: <Trello size={16} />, adminOnly: false },
+        { name: 'Lista de Leads', href: '/leads', icon: <Users size={16} />, adminOnly: false },
+        { name: 'Configuração Kanban', href: '/settings/kanban', icon: <Settings size={16} />, adminOnly: true },
+      ]
+    },
+    {
+      title: 'Configurações',
+      items: [
+        { name: 'White Label', href: '/settings', icon: <Settings size={16} />, adminOnly: true },
+        { name: 'WhatsApp/Meta', href: '/settings/whatsapp', icon: <Smartphone size={16} />, adminOnly: true },
+      ]
+    }
   ];
 
   const masterNavigation = [
@@ -53,10 +74,13 @@ export function AppLayout() {
     { name: 'Tenants (Clientes)', href: '/master/tenants', icon: <Building2 size={16} /> },
   ];
 
-  const currentOperationalNav = operationalNavigation.filter(nav => {
-    if (nav.adminOnly && currentUser.role !== 'admin' && !isMaster) return false;
-    return true;
-  });
+  const filteredOperationalNav = operationalNavigation.map(group => ({
+    ...group,
+    items: group.items.filter(nav => {
+      if (nav.adminOnly && currentUser.role !== 'admin' && !isMaster) return false;
+      return true;
+    })
+  })).filter(group => group.items.length > 0);
 
   const handleLogout = () => {
     logout();
@@ -64,7 +88,10 @@ export function AppLayout() {
   };
 
   return (
-    <div className="flex h-screen w-full bg-[#F1F5F9] font-sans text-slate-900 overflow-hidden">
+    <div 
+      className="flex h-screen w-full bg-[#F1F5F9] font-sans text-slate-900 overflow-hidden"
+      style={{ '--primary-color': primaryColor } as React.CSSProperties}
+    >
       {/* Sidebar */}
       <aside 
         className="w-64 flex-shrink-0 flex flex-col transition-colors duration-300"
@@ -101,14 +128,20 @@ export function AppLayout() {
           )}
 
           {(!isMaster || activeTenantId) && (
-            <>
-              <div className="text-[10px] uppercase tracking-widest opacity-50 font-semibold mb-2 px-2 mt-6">
-                {isMaster ? `Operacional: ${tenant?.name || ''}` : 'Principal'}
-              </div>
-              {currentOperationalNav.map((item) => (
-                <NavItem key={item.href} to={item.href} icon={item.icon} label={item.name} />
+            <div className="mt-4">
+              {filteredOperationalNav.map((group, idx) => (
+                <div key={idx} className="mb-6">
+                  <div className="text-[10px] uppercase tracking-widest opacity-50 font-semibold mb-2 px-2">
+                    {group.title}
+                  </div>
+                  <div className="space-y-1">
+                    {group.items.map((item) => (
+                      <NavItem key={item.href} to={item.href} icon={item.icon} label={item.name} />
+                    ))}
+                  </div>
+                </div>
               ))}
-            </>
+            </div>
           )}
         </nav>
 
@@ -149,7 +182,7 @@ export function AppLayout() {
                 <select 
                   value={activeTenantId || ''} 
                   onChange={(e) => setActiveTenantId(e.target.value || null)}
-                  className="text-sm border-slate-200 rounded-md bg-slate-50 py-1.5 px-3 focus:ring-indigo-500 focus:border-indigo-500"
+                  className="text-sm border-slate-200 rounded-md bg-slate-50 py-1.5 px-3 focus:ring-primary-500 focus:border-primary-500"
                 >
                   <option value="">-- Visão Master --</option>
                   {tenants.map(t => (
@@ -160,7 +193,7 @@ export function AppLayout() {
             )}
 
             <div className="relative hidden md:block">
-              <input type="text" placeholder="Buscar..." className="w-64 pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition-all" /> 
+              <input type="text" placeholder="Buscar..." className="w-64 pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:ring-2 focus:ring-primary-500 outline-none transition-all" /> 
               <div className="absolute left-3.5 top-2.5 text-slate-400">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
               </div>

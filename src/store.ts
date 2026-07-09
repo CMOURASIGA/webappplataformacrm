@@ -56,6 +56,9 @@ interface AppState {
   addMessage: (conversationId: string, senderId: string, text: string) => Promise<void>;
   assignConversation: (conversationId: string, userId: string) => void;
   fetchMessages: (conversationId: string) => Promise<void>;
+  
+  createQuickReply: (title: string, text: string) => Promise<void>;
+  deleteQuickReply: (id: string) => Promise<void>;
 }
 
 export const useStore = create<AppState>()(
@@ -89,7 +92,7 @@ export const useStore = create<AppState>()(
       logout: () => {
         localStorage.removeItem('token');
         localStorage.removeItem('activeTenantId');
-        set({ currentUser: null, isInitialized: false, activeTenantId: null, tenants: [], leads: [], conversations: [], pipelines: [], tags: [] });
+        set({ currentUser: null, isInitialized: false, activeTenantId: null, tenants: [], leads: [], conversations: [], pipelines: [], tags: [], quickReplies: [] });
       },
 
       setActiveTenantId: async (id) => {
@@ -111,24 +114,26 @@ export const useStore = create<AppState>()(
             const tenants = await fetchApi('/admin/tenants');
             
             if (activeTenantId) {
-              const [settings, pipelines, leads, conversations, tags] = await Promise.all([
+              const [settings, pipelines, leads, conversations, tags, quickReplies] = await Promise.all([
                 fetchApi('/tenant/settings'),
                 fetchApi('/pipelines'),
                 fetchApi('/leads'),
                 fetchApi('/conversations'),
-                fetchApi('/tags')
+                fetchApi('/tags'),
+                fetchApi('/quick-replies')
               ]);
-              set({ tenants, pipelines, leads, conversations, tags, isInitialized: true });
+              set({ tenants, pipelines, leads, conversations, tags, quickReplies, isInitialized: true });
             } else {
               set({ tenants, isInitialized: true });
             }
           } else {
-            const [settings, pipelines, leads, conversations, tags] = await Promise.all([
+            const [settings, pipelines, leads, conversations, tags, quickReplies] = await Promise.all([
               fetchApi('/tenant/settings'),
               fetchApi('/pipelines'),
               fetchApi('/leads'),
               fetchApi('/conversations'),
-                fetchApi('/tags')
+              fetchApi('/tags'),
+              fetchApi('/quick-replies')
             ]);
             
             // Reconstruct tenant object for UI
@@ -146,7 +151,7 @@ export const useStore = create<AppState>()(
               }
             };
             
-            set({ tenants: [tenant], pipelines, leads, conversations, isInitialized: true });
+            set({ tenants: [tenant], pipelines, leads, conversations, tags, quickReplies, isInitialized: true });
           }
         } catch (error) {
           console.error("Failed to initialize data:", error);
@@ -178,10 +183,13 @@ export const useStore = create<AppState>()(
               sidebar_text_color: settings.sidebarTextColor 
             })
           });
-          const currentTenant = get().tenants[0];
-          set({
-            tenants: [{ ...currentTenant, settings: { ...currentTenant.settings, ...settings } }]
-          });
+          set(state => ({
+            tenants: state.tenants.map(t => 
+              t.id === tenantId 
+                ? { ...t, settings: { ...t.settings, ...settings } } 
+                : t
+            )
+          }));
         } catch (error) {
           console.error("Failed to update settings", error);
         }
@@ -357,8 +365,28 @@ export const useStore = create<AppState>()(
         set(state => ({
           conversations: state.conversations.map(c => c.id === conversationId ? { ...c, assignedTo: userId, status: 'in_progress' } : c)
         }));
-      }
+      },
 
+      createQuickReply: async (title, text) => {
+        try {
+          const newReply = await fetchApi('/quick-replies', {
+            method: 'POST',
+            body: JSON.stringify({ title, text })
+          });
+          set(state => ({ quickReplies: [newReply, ...state.quickReplies] }));
+        } catch (error) {
+          console.error("Failed to create quick reply", error);
+        }
+      },
+
+      deleteQuickReply: async (id) => {
+        try {
+          await fetchApi(`/quick-replies/${id}`, { method: 'DELETE' });
+          set(state => ({ quickReplies: state.quickReplies.filter(r => r.id !== id) }));
+        } catch (error) {
+          console.error("Failed to delete quick reply", error);
+        }
+      }
     }),
     {
       name: 'crm-storage',

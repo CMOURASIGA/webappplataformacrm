@@ -117,3 +117,12 @@ CREATE TABLE IF NOT EXISTS whatsapp_connections (
   FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS quick_replies (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  title TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+);
+

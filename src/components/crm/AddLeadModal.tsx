@@ -87,7 +87,7 @@ export function AddLeadModal({ isOpen, onClose }: AddLeadModalProps) {
             <select 
               value={source} 
               onChange={e => setSource(e.target.value)}
-              className="w-full h-10 px-3 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+              className="w-full h-10 px-3 rounded-md border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
             >
               <option value="Manual">Manual</option>
               <option value="WhatsApp">WhatsApp</option>

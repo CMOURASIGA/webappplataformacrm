@@ -13,6 +13,7 @@ import Kanban from './pages/crm/Kanban';
 import KanbanConfig from './pages/crm/KanbanConfig';
 import LeadsList from './pages/crm/LeadsList';
 import Chat from './pages/chat/Chat';
+import QuickReplies from './pages/chat/QuickReplies';
 import Settings from './pages/admin/Settings';
 
 export default function App() {
@@ -28,6 +29,7 @@ export default function App() {
           <Route path="settings/kanban" element={<KanbanConfig />} />
           <Route path="leads" element={<LeadsList />} />
           <Route path="chat" element={<Chat />} />
+          <Route path="chat/quick-replies" element={<QuickReplies />} />
           <Route path="settings" element={<Settings />} />
           <Route path="master/tenants" element={<Tenants />} />
         </Route>

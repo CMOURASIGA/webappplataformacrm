@@ -42,7 +42,7 @@ export default function Kanban() {
         <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">{pipeline.name} (Kanban)</h1>
         <div className="flex gap-4">
           <Button onClick={() => setIsModalOpen(true)} className="h-8 text-xs"><Plus size={14} className="mr-1" /> Add Lead</Button>
-          <button className="text-indigo-600 text-xs font-bold hover:underline">Ver Todos</button>
+          <button className="text-primary-600 text-xs font-bold hover:underline">Ver Todos</button>
         </div>
       </div>
 
@@ -79,10 +79,10 @@ export default function Kanban() {
                                 onDoubleClick={() => setChatLeadId(lead.id)}
                                 className={cn(
                                   "bg-white p-3 rounded-lg border shadow-sm border-l-4 select-none transition-shadow group relative",
-                                  snapshot.isDragging ? "shadow-md border-indigo-400 border-l-indigo-500" : "border-slate-200 border-l-blue-400 hover:border-slate-300"
+                                  snapshot.isDragging ? "shadow-md border-primary-400 border-l-primary-500" : "border-slate-200 border-l-primary-400 hover:border-slate-300"
                                 )}
                               >
-                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-slate-400 hover:text-indigo-600" onClick={(e) => { e.stopPropagation(); setChatLeadId(lead.id); }}>
+                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-slate-400 hover:text-primary-600" onClick={(e) => { e.stopPropagation(); setChatLeadId(lead.id); }}>
                                   <MessageCircle size={14} />
                                 </div>
                                 <p className="text-sm font-bold truncate text-slate-900 pr-5">{lead.name}</p>

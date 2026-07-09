@@ -5,6 +5,10 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { cn } from '../../lib/utils';
 
+import DOMPurify from 'dompurify';
+import ReactQuill from 'react-quill';
+import 'react-quill/dist/quill.snow.css';
+
 export default function Chat() {
   const currentUser = useStore(state => state.currentUser);
   const activeTenantId = useStore(state => state.activeTenantId);
@@ -34,6 +38,8 @@ export default function Chat() {
   const activePipeline = activeLead ? pipelines.find(p => p.id === activeLead.pipelineId) : null;
   
   const activeMessages = activeConversation ? messages.filter(m => m.conversationId === activeConversation.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
+
+  const quickReplies = useStore(state => state.quickReplies);
 
   useEffect(() => {
     if (activeConversation) {
@@ -81,7 +87,7 @@ export default function Chat() {
                 onClick={() => handleSelectLead(lead.id)}
                 className={cn(
                   "p-4 border-b border-slate-100 cursor-pointer hover:bg-slate-50 transition-colors",
-                  isActive && "bg-indigo-50 border-l-4 border-l-indigo-600"
+                  isActive && "bg-primary-50 border-l-4 border-l-primary-600"
                 )}
               >
                 <div className="font-bold text-sm text-slate-800">{lead.name}</div>
@@ -104,7 +110,7 @@ export default function Chat() {
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <div className="flex items-center gap-4">
                 <div className="relative">
-                  <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold">
+                  <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold">
                     {activeLead.name.charAt(0)}
                   </div>
                   <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></div>
@@ -122,7 +128,7 @@ export default function Chat() {
                     <select 
                       value={activeLead.stageId}
                       onChange={(e) => moveLead(activeLead.id, e.target.value)}
-                      className="text-xs border-slate-300 rounded px-2 py-1 bg-white focus:ring-indigo-500 focus:border-indigo-500"
+                      className="text-xs border-slate-300 rounded px-2 py-1 bg-white focus:ring-primary-500 focus:border-primary-500"
                     >
                       {activePipeline.stages.map(s => (
                         <option key={s.id} value={s.id}>{s.name}</option>
@@ -152,13 +158,13 @@ export default function Chat() {
                   return (
                     <div key={msg.id} className={cn("flex", isMine ? "justify-end" : "justify-start")}>
                       <div className={cn(
-                        "max-w-[85%] p-3 text-sm",
+                        "max-w-[85%] p-3 text-sm prose prose-sm",
                         isMine 
-                          ? "bg-indigo-600 text-white rounded-2xl rounded-tr-none" 
-                          : "bg-slate-100 text-slate-700 rounded-2xl rounded-tl-none"
+                          ? "bg-primary-600 text-white rounded-2xl rounded-tr-none prose-invert" 
+                          : "bg-slate-100 text-slate-700 rounded-2xl rounded-tl-none prose-slate"
                       )}>
-                        {msg.text}
-                        <div className={cn("text-[9px] mt-1 block", isMine ? "text-indigo-200 text-right" : "text-slate-400")}>
+                        <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(msg.text) }} />
+                        <div className={cn("text-[9px] mt-1 block", isMine ? "text-primary-200 text-right" : "text-slate-400")}>
                           {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </div>
                       </div>
@@ -170,21 +176,41 @@ export default function Chat() {
             </div>
 
             <div className="p-4 bg-white border-t border-slate-100">
-              <form onSubmit={handleSend} className="flex gap-2 items-center bg-slate-100 p-2 rounded-lg border border-slate-200">
-                <input 
-                  value={text}
-                  onChange={e => setText(e.target.value)}
-                  placeholder="Digite uma mensagem..."
-                  disabled={!activeConversation}
-                  className="flex-1 bg-transparent border-none focus:ring-0 text-sm outline-none px-2 disabled:opacity-50"
-                />
-                <button 
-                  type="submit" 
-                  disabled={!text.trim() || !activeConversation}
-                  className="p-1.5 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50 transition-colors"
-                >
-                  <Send size={18} />
-                </button>
+              <form onSubmit={handleSend} className="space-y-2">
+                {quickReplies.length > 0 && (
+                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    {quickReplies.map(qr => (
+                      <button
+                        key={qr.id}
+                        type="button"
+                        onClick={() => setText(qr.text)}
+                        className="whitespace-nowrap text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200 hover:bg-slate-200 hover:text-slate-800 transition-colors"
+                      >
+                        {qr.title}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2 items-end bg-white p-2 rounded-lg border border-slate-200 shadow-sm relative">
+                  <div className="flex-1">
+                    <ReactQuill 
+                      theme="snow"
+                      value={text} 
+                      onChange={setText} 
+                      readOnly={!activeConversation}
+                      modules={{ toolbar: false }}
+                      placeholder="Digite uma mensagem..."
+                      className="border-none [&_.ql-container]:border-none [&_.ql-editor]:min-h-[40px] [&_.ql-editor]:max-h-[120px] [&_.ql-editor]:py-2 [&_.ql-editor]:px-2 text-sm"
+                    />
+                  </div>
+                  <button 
+                    type="submit" 
+                    disabled={!text.trim() || text === '<p><br></p>' || !activeConversation}
+                    className="p-2 mb-1 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors shrink-0"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
               </form>
             </div>
           </>

@@ -101,7 +101,7 @@ app.post('/api/admin/tenants', authenticate, (req: any, res: any) => {
 // Tenant Details and Settings
 app.get('/api/tenant/settings', authenticate, (req: any, res: any) => {
   const { tenantId, role } = req.user;
-  if (role === 'master') return res.json({ company_name: 'Master Panel', primary_color: '#4f46e5' });
+  if (role === 'master' && !tenantId) return res.json({ company_name: 'Master Panel', primary_color: '#4f46e5' });
   
   const settings = db.prepare('SELECT * FROM tenant_settings WHERE tenant_id = ?').get(tenantId);
   res.json(settings);
@@ -176,6 +176,44 @@ app.delete('/api/tags/:id', authenticate, (req: any, res: any) => {
   
   const { id } = req.params;
   db.prepare('DELETE FROM tenant_tags WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+  res.json({ success: true });
+});
+
+// Quick Replies
+app.get('/api/quick-replies', authenticate, (req: any, res: any) => {
+  const { tenantId } = req.user;
+  const replies = db.prepare('SELECT * FROM quick_replies WHERE tenant_id = ? ORDER BY created_at DESC').all(tenantId);
+  res.json(replies.map((r: any) => ({
+    id: r.id,
+    tenantId: r.tenant_id,
+    title: r.title,
+    text: r.text,
+    createdAt: r.created_at
+  })));
+});
+
+app.post('/api/quick-replies', authenticate, (req: any, res: any) => {
+  const { tenantId, role } = req.user;
+  
+  const { title, text } = req.body;
+  const id = Math.random().toString(36).substring(2, 9);
+  
+  db.prepare('INSERT INTO quick_replies (id, tenant_id, title, text) VALUES (?, ?, ?, ?)').run(id, tenantId, title, text);
+  
+  const newReply = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(id) as any;
+  res.json({
+    id: newReply.id,
+    tenantId: newReply.tenant_id,
+    title: newReply.title,
+    text: newReply.text,
+    createdAt: newReply.created_at
+  });
+});
+
+app.delete('/api/quick-replies/:id', authenticate, (req: any, res: any) => {
+  const { tenantId, role } = req.user;
+  const { id } = req.params;
+  db.prepare('DELETE FROM quick_replies WHERE id = ? AND tenant_id = ?').run(id, tenantId);
   res.json({ success: true });
 });
 

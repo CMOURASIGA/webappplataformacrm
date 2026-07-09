@@ -50,7 +50,7 @@ export default function LeadsList() {
                   {lead.source}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <span className="px-2.5 py-0.5 inline-flex text-[10px] leading-5 font-bold rounded-full bg-indigo-100 text-indigo-700 capitalize">
+                  <span className="px-2.5 py-0.5 inline-flex text-[10px] leading-5 font-bold rounded-full bg-primary-100 text-primary-700 capitalize">
                     {lead.status.replace('_', ' ')}
                   </span>
                 </td>

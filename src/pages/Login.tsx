@@ -30,17 +30,17 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-[#F1F5F9] flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center text-indigo-600">
-          <div className="w-16 h-16 bg-indigo-500 rounded-xl flex items-center justify-center text-white font-bold text-3xl shadow-lg shadow-indigo-500/30">
+        <div className="flex justify-center text-primary-600">
+          <div className="w-16 h-16 bg-primary-500 rounded-xl flex items-center justify-center text-white font-bold text-3xl shadow-lg shadow-primary-500">
             C
           </div>
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
           CRM Flow <span className="text-xl font-normal opacity-50">MVP</span>
         </h2>
-        <div className="mt-4 text-sm text-slate-600 bg-indigo-50 p-4 rounded-lg border border-indigo-100 mx-4">
-          <p className="font-bold text-indigo-800 mb-2">Credenciais de Acesso:</p>
-          <ul className="list-disc pl-4 space-y-1 text-left text-xs text-indigo-700">
+        <div className="mt-4 text-sm text-slate-600 bg-primary-50 p-4 rounded-lg border border-primary-100 mx-4">
+          <p className="font-bold text-primary-800 mb-2">Credenciais de Acesso:</p>
+          <ul className="list-disc pl-4 space-y-1 text-left text-xs text-primary-700">
             <li><strong>Master:</strong> master@crm.com / master123</li>
             <li><strong>Admin Cliente:</strong> Acesse como Master e crie um Tenant.</li>
             <li><strong>Atendente:</strong> (O Admin Cliente criará futuramente)</li>

@@ -8,7 +8,7 @@ export default function Dashboard() {
   const conversations = useStore(state => state.conversations).filter(c => c.tenantId === currentUser?.tenantId);
 
   const stats = [
-    { name: 'Total Leads', value: leads.length, icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-100' },
+    { name: 'Total Leads', value: leads.length, icon: Users, color: 'text-primary-600', bg: 'bg-primary-100' },
     { name: 'Open Chats', value: conversations.filter(c => ['new', 'in_progress'].includes(c.status)).length, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100' },
     { name: 'Won Leads', value: leads.filter(l => l.status === 'won').length, icon: CheckCircle, color: 'text-emerald-600', bg: 'bg-emerald-100' },
     { name: 'Waiting Reply', value: conversations.filter(c => c.status === 'waiting_client').length, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100' },
