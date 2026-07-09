@@ -14,6 +14,8 @@ export interface TenantSettings {
   primaryColor: string;
   logoUrl: string;
   companyName: string;
+  sidebarColor?: string;
+  sidebarTextColor?: string;
 }
 
 export interface Tenant {
@@ -37,6 +39,14 @@ export interface Pipeline {
   stages: PipelineStage[];
 }
 
+export interface TenantTag {
+  id: string;
+  tenantId: string;
+  name: string;
+  color: string;
+  createdAt: string;
+}
+
 export interface Lead {
   id: string;
   tenantId: string;
@@ -52,6 +62,7 @@ export interface Lead {
   createdAt: string;
   updatedAt: string;
   notes: string;
+  tags?: string[];
 }
 
 export interface Message {

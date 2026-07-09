@@ -8,8 +8,11 @@ import {
   Conversation,
   Message,
   QuickReply,
+  TenantTag,
 } from './types';
+
 import { generateId } from './lib/utils';
+import { fetchApi } from './lib/api';
 
 interface AppState {
   currentUser: User | null;
@@ -20,219 +23,334 @@ interface AppState {
   conversations: Conversation[];
   messages: Message[];
   quickReplies: QuickReply[];
+  tags: TenantTag[];
+  isInitialized: boolean;
+  activeTenantId: string | null;
 
   // Actions
-  login: (email: string) => void;
+  login: (email: string, password?: string) => Promise<void>;
   logout: () => void;
+  initializeData: () => Promise<void>;
+  setActiveTenantId: (id: string | null) => Promise<void>;
   
   // Tenants
-  addTenant: (name: string) => void;
-  updateTenantSettings: (tenantId: string, settings: any) => void;
+  addTenant: (data: any) => Promise<void>;
+  updateTenantSettings: (tenantId: string, settings: any) => Promise<void>;
   
   // Users
   addUser: (user: Omit<User, 'id'>) => void;
   
+  // Tags & Stages
+  createTag: (name: string, color: string) => Promise<void>;
+  deleteTag: (id: string) => Promise<void>;
+  createStage: (pipelineId: string, name: string, order: number) => Promise<void>;
+  deleteStage: (id: string) => Promise<void>;
+
   // Leads & Pipeline
-  addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => void;
-  updateLead: (id: string, updates: Partial<Lead>) => void;
-  moveLead: (leadId: string, newStageId: string) => void;
+  addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
+  updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
+  moveLead: (leadId: string, newStageId: string) => Promise<void>;
   
   // Chat
-  addConversation: (leadId: string, tenantId: string) => void;
-  addMessage: (conversationId: string, senderId: string, text: string) => void;
+  addConversation: (leadId: string, tenantId: string) => Promise<void>;
+  addMessage: (conversationId: string, senderId: string, text: string) => Promise<void>;
   assignConversation: (conversationId: string, userId: string) => void;
+  fetchMessages: (conversationId: string) => Promise<void>;
 }
-
-const mockData = {
-  users: [
-    { id: 'u1', name: 'Master Admin', email: 'master@crm.com', role: 'master' as const },
-    { id: 'u2', tenantId: 't1', name: 'Client Admin', email: 'admin@client.com', role: 'admin' as const },
-    { id: 'u3', tenantId: 't1', name: 'Agent John', email: 'john@client.com', role: 'user' as const },
-  ],
-  tenants: [
-    { 
-      id: 't1', 
-      name: 'Acme Corp', 
-      settings: { primaryColor: '#3b82f6', logoUrl: '', companyName: 'Acme Corp' }, 
-      createdAt: new Date().toISOString(), 
-      status: 'active' as const 
-    }
-  ],
-  pipelines: [
-    {
-      id: 'p1',
-      tenantId: 't1',
-      name: 'Vendas Padrão',
-      stages: [
-        { id: 's1', name: 'Novo Lead', order: 0 },
-        { id: 's2', name: 'Primeiro Contato', order: 1 },
-        { id: 's3', name: 'Em Negociação', order: 2 },
-        { id: 's4', name: 'Proposta Enviada', order: 3 },
-        { id: 's5', name: 'Fechado', order: 4 },
-        { id: 's6', name: 'Perdido', order: 5 },
-      ]
-    }
-  ]
-};
 
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       currentUser: null,
-      users: mockData.users,
-      tenants: mockData.tenants,
-      pipelines: mockData.pipelines,
-      leads: [
-        {
-          id: 'l1',
-          tenantId: 't1',
-          name: 'Maria Silva',
-          phone: '+5511999999999',
-          source: 'WhatsApp',
-          status: 'new',
-          stageId: 's1',
-          pipelineId: 'p1',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          notes: ''
-        },
-        {
-          id: 'l2',
-          tenantId: 't1',
-          name: 'João Pedro',
-          phone: '+5511988888888',
-          source: 'Site',
-          status: 'in_progress',
-          stageId: 's2',
-          pipelineId: 'p1',
-          assignedTo: 'u3',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-          notes: 'Cliente muito interessado.'
-        }
-      ],
-      conversations: [
-        {
-          id: 'c1',
-          tenantId: 't1',
-          leadId: 'l1',
-          status: 'new',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        }
-      ],
-      messages: [
-        {
-          id: 'm1',
-          conversationId: 'c1',
-          senderId: 'l1',
-          text: 'Olá, gostaria de saber mais sobre o produto.',
-          createdAt: new Date().toISOString()
-        }
-      ],
+      users: [],
+      tenants: [],
+      pipelines: [],
+      leads: [],
+      conversations: [],
+      messages: [],
       quickReplies: [],
+      tags: [],
+      isInitialized: false,
+      activeTenantId: localStorage.getItem('activeTenantId'),
 
-      login: (email) => {
-        const user = get().users.find(u => u.email === email);
-        if (user) {
-          set({ currentUser: user });
-        } else {
-          alert('User not found. Use master@crm.com, admin@client.com, or john@client.com');
+      login: async (email, password = 'password') => {
+        try {
+          const res = await fetchApi('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email, password })
+          });
+          localStorage.setItem('token', res.token);
+          set({ currentUser: res.user });
+          await get().initializeData();
+        } catch (error: any) {
+          alert('Login failed: ' + error.message);
         }
       },
-      logout: () => set({ currentUser: null }),
-
-      addTenant: (name) => {
-        const id = generateId();
-        const newTenant: Tenant = {
-          id,
-          name,
-          settings: { primaryColor: '#000000', logoUrl: '', companyName: name },
-          createdAt: new Date().toISOString(),
-          status: 'active'
-        };
-        const newAdmin: User = {
-          id: generateId(),
-          tenantId: id,
-          name: `${name} Admin`,
-          email: `admin@${name.toLowerCase().replace(/\\s/g, '')}.com`,
-          role: 'admin'
-        };
-        const newPipeline: Pipeline = {
-          id: generateId(),
-          tenantId: id,
-          name: 'Funil Padrão',
-          stages: [
-            { id: generateId(), name: 'Novo', order: 0 },
-            { id: generateId(), name: 'Negociação', order: 1 },
-            { id: generateId(), name: 'Fechado', order: 2 }
-          ]
-        };
-        
-        set(state => ({
-          tenants: [...state.tenants, newTenant],
-          users: [...state.users, newAdmin],
-          pipelines: [...state.pipelines, newPipeline]
-        }));
+      logout: () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('activeTenantId');
+        set({ currentUser: null, isInitialized: false, activeTenantId: null, tenants: [], leads: [], conversations: [], pipelines: [], tags: [] });
       },
 
-      updateTenantSettings: (tenantId, settings) => {
-        set(state => ({
-          tenants: state.tenants.map(t => t.id === tenantId ? { ...t, settings: { ...t.settings, ...settings } } : t)
-        }));
+      setActiveTenantId: async (id) => {
+        if (id) {
+          localStorage.setItem('activeTenantId', id);
+        } else {
+          localStorage.removeItem('activeTenantId');
+        }
+        set({ activeTenantId: id, isInitialized: false });
+        await get().initializeData();
+      },
+
+      initializeData: async () => {
+        const { currentUser, activeTenantId } = get();
+        if (!currentUser) return;
+        
+        try {
+          if (currentUser.role === 'master') {
+            const tenants = await fetchApi('/admin/tenants');
+            
+            if (activeTenantId) {
+              const [settings, pipelines, leads, conversations, tags] = await Promise.all([
+                fetchApi('/tenant/settings'),
+                fetchApi('/pipelines'),
+                fetchApi('/leads'),
+                fetchApi('/conversations'),
+                fetchApi('/tags')
+              ]);
+              set({ tenants, pipelines, leads, conversations, tags, isInitialized: true });
+            } else {
+              set({ tenants, isInitialized: true });
+            }
+          } else {
+            const [settings, pipelines, leads, conversations, tags] = await Promise.all([
+              fetchApi('/tenant/settings'),
+              fetchApi('/pipelines'),
+              fetchApi('/leads'),
+              fetchApi('/conversations'),
+                fetchApi('/tags')
+            ]);
+            
+            // Reconstruct tenant object for UI
+            const tenant: Tenant = {
+              id: currentUser.tenantId as string,
+              name: settings.company_name,
+              status: 'active',
+              createdAt: new Date().toISOString(),
+              settings: {
+                companyName: settings.company_name,
+                primaryColor: settings.primary_color,
+                logoUrl: settings.logo_url,
+                sidebarColor: settings.sidebar_color,
+                sidebarTextColor: settings.sidebar_text_color
+              }
+            };
+            
+            set({ tenants: [tenant], pipelines, leads, conversations, isInitialized: true });
+          }
+        } catch (error) {
+          console.error("Failed to initialize data:", error);
+        }
+      },
+
+      addTenant: async (data) => {
+        try {
+          await fetchApi('/admin/tenants', {
+            method: 'POST',
+            body: JSON.stringify(data)
+          });
+          const tenants = await fetchApi('/admin/tenants');
+          set({ tenants });
+        } catch (error) {
+          console.error("Failed to add tenant:", error);
+        }
+      },
+
+      updateTenantSettings: async (tenantId, settings) => {
+        try {
+          await fetchApi('/tenant/settings', {
+            method: 'PATCH',
+            body: JSON.stringify({ 
+              company_name: settings.companyName, 
+              primary_color: settings.primaryColor, 
+              logo_url: settings.logoUrl,
+              sidebar_color: settings.sidebarColor,
+              sidebar_text_color: settings.sidebarTextColor 
+            })
+          });
+          const currentTenant = get().tenants[0];
+          set({
+            tenants: [{ ...currentTenant, settings: { ...currentTenant.settings, ...settings } }]
+          });
+        } catch (error) {
+          console.error("Failed to update settings", error);
+        }
       },
 
       addUser: (user) => {
         set(state => ({ users: [...state.users, { ...user, id: generateId() }] }));
       },
 
-      addLead: (lead) => {
-        set(state => ({
-          leads: [...state.leads, {
-            ...lead,
-            id: generateId(),
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }]
-        }));
+      createTag: async (name, color) => {
+        try {
+          const newTag = await fetchApi('/tags', {
+            method: 'POST',
+            body: JSON.stringify({ name, color })
+          });
+          set(state => ({ tags: [newTag, ...state.tags] }));
+        } catch (error) {
+          console.error("Failed to create tag", error);
+        }
       },
 
-      updateLead: (id, updates) => {
+      deleteTag: async (id) => {
+        try {
+          await fetchApi(`/tags/${id}`, { method: 'DELETE' });
+          set(state => ({ tags: state.tags.filter(t => t.id !== id) }));
+        } catch (error) {
+          console.error("Failed to delete tag", error);
+        }
+      },
+
+      createStage: async (pipelineId, name, order) => {
+        try {
+          await fetchApi(`/pipelines/${pipelineId}/stages`, {
+            method: 'POST',
+            body: JSON.stringify({ name, order })
+          });
+          // Refresh pipelines
+          const pipelines = await fetchApi('/pipelines');
+          set({ pipelines });
+        } catch (error) {
+          console.error("Failed to create stage", error);
+        }
+      },
+
+      deleteStage: async (id) => {
+        try {
+          await fetchApi(`/stages/${id}`, { method: 'DELETE' });
+          // Refresh pipelines
+          const pipelines = await fetchApi('/pipelines');
+          set({ pipelines });
+        } catch (error) {
+          console.error("Failed to delete stage", error);
+        }
+      },
+
+      addLead: async (lead) => {
+        try {
+          const newLead = await fetchApi('/leads', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: lead.name,
+              phone: lead.phone,
+              email: lead.email,
+              company: lead.company,
+              source: lead.source,
+              stage_id: lead.stageId,
+              pipeline_id: lead.pipelineId,
+              tags: lead.tags || []
+            })
+          });
+          
+          // MAP snake_case to camelCase
+          const formattedLead = {
+            ...newLead,
+            stageId: newLead.stage_id,
+            pipelineId: newLead.pipeline_id,
+            tenantId: newLead.tenant_id
+          };
+          
+          set(state => ({
+            leads: [formattedLead, ...state.leads]
+          }));
+
+          // Automatically create a conversation for the new lead
+          await get().addConversation(formattedLead.id, formattedLead.tenantId);
+        } catch (error) {
+          console.error("Failed to add lead:", error);
+        }
+      },
+
+      updateLead: async (id, updates) => {
+        // Implement full update if needed
         set(state => ({
           leads: state.leads.map(l => l.id === id ? { ...l, ...updates, updatedAt: new Date().toISOString() } : l)
         }));
       },
 
-      moveLead: (leadId, newStageId) => {
-        set(state => ({
-          leads: state.leads.map(l => l.id === leadId ? { ...l, stageId: newStageId, updatedAt: new Date().toISOString() } : l)
-        }));
+      moveLead: async (leadId, newStageId) => {
+        try {
+          await fetchApi(`/leads/${leadId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ stage_id: newStageId })
+          });
+          set(state => ({
+            leads: state.leads.map(l => l.id === leadId ? { ...l, stageId: newStageId, updatedAt: new Date().toISOString() } : l)
+          }));
+        } catch (error) {
+          console.error("Failed to move lead", error);
+        }
       },
 
-      addConversation: (leadId, tenantId) => {
-        const id = generateId();
-        set(state => ({
-          conversations: [...state.conversations, {
-            id,
-            tenantId,
-            leadId,
-            status: 'new',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }]
-        }));
+      addConversation: async (leadId, tenantId) => {
+        try {
+          const newConv = await fetchApi('/conversations', {
+            method: 'POST',
+            body: JSON.stringify({ lead_id: leadId })
+          });
+          
+          set(state => {
+            const exists = state.conversations.find(c => c.id === newConv.id);
+            if (exists) return state;
+            return {
+              conversations: [newConv, ...state.conversations]
+            };
+          });
+        } catch (error) {
+          console.error("Failed to add conversation", error);
+        }
+      },
+      
+      fetchMessages: async (conversationId) => {
+        try {
+          const rawMsgs = await fetchApi(`/conversations/${conversationId}/messages`);
+          const messages = rawMsgs.map((m: any) => ({
+             ...m,
+             conversationId: m.conversation_id,
+             senderId: m.sender_id,
+             createdAt: m.created_at
+          }));
+          
+          // replace old messages for this convo
+          set(state => ({
+            messages: [...state.messages.filter(m => m.conversationId !== conversationId), ...messages]
+          }));
+        } catch (error) {
+          console.error("Failed to fetch messages", error);
+        }
       },
 
-      addMessage: (conversationId, senderId, text) => {
-        set(state => ({
-          messages: [...state.messages, {
-            id: generateId(),
-            conversationId,
-            senderId,
-            text,
-            createdAt: new Date().toISOString()
-          }]
-        }));
+      addMessage: async (conversationId, senderId, text) => {
+        try {
+          const rawMsg = await fetchApi(`/conversations/${conversationId}/messages`, {
+            method: 'POST',
+            body: JSON.stringify({ text })
+          });
+          
+          const newMsg = {
+             ...rawMsg,
+             conversationId: rawMsg.conversation_id,
+             senderId: rawMsg.sender_id,
+             createdAt: rawMsg.created_at
+          };
+          
+          set(state => ({
+            messages: [...state.messages, newMsg]
+          }));
+        } catch (error) {
+          console.error("Failed to send message", error);
+        }
       },
 
       assignConversation: (conversationId, userId) => {
@@ -244,6 +362,8 @@ export const useStore = create<AppState>()(
     }),
     {
       name: 'crm-storage',
+      partialize: (state) => ({ currentUser: state.currentUser }), // Only persist user info
     }
   )
 );
+

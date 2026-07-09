@@ -6,13 +6,28 @@ import { Input } from '../../components/ui/Input';
 export default function Tenants() {
   const tenants = useStore(state => state.tenants);
   const addTenant = useStore(state => state.addTenant);
-  const [newTenantName, setNewTenantName] = useState('');
+  
+  const [formData, setFormData] = useState({
+    name: '',
+    company_name: '',
+    email: '',
+    admin_name: '',
+    admin_email: '',
+    admin_password: ''
+  });
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    if (newTenantName.trim()) {
-      addTenant(newTenantName.trim());
-      setNewTenantName('');
+    if (formData.name && formData.admin_email) {
+      addTenant(formData);
+      setFormData({
+        name: '',
+        company_name: '',
+        email: '',
+        admin_name: '',
+        admin_email: '',
+        admin_password: ''
+      });
     }
   };
 
@@ -24,13 +39,66 @@ export default function Tenants() {
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-tight">Create New Tenant</h2>
-        <form onSubmit={handleAdd} className="flex gap-4 max-w-md">
-          <Input 
-            placeholder="Company Name" 
-            value={newTenantName} 
-            onChange={e => setNewTenantName(e.target.value)} 
-          />
-          <Button type="submit">Create</Button>
+        <form onSubmit={handleAdd} className="space-y-4 max-w-2xl">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Company Name</label>
+              <Input 
+                placeholder="Acme Corp" 
+                value={formData.name} 
+                onChange={e => setFormData({...formData, name: e.target.value, company_name: e.target.value})} 
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Company Email</label>
+              <Input 
+                placeholder="contact@acme.com" 
+                type="email"
+                value={formData.email} 
+                onChange={e => setFormData({...formData, email: e.target.value})} 
+              />
+            </div>
+          </div>
+          
+          <div className="pt-4 border-t border-slate-100">
+            <h3 className="text-xs font-bold text-slate-800 mb-3 uppercase tracking-tight">Admin User</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Admin Name</label>
+                <Input 
+                  placeholder="John Doe" 
+                  value={formData.admin_name} 
+                  onChange={e => setFormData({...formData, admin_name: e.target.value})} 
+                  required
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Admin Email</label>
+                <Input 
+                  placeholder="admin@acme.com" 
+                  type="email"
+                  value={formData.admin_email} 
+                  onChange={e => setFormData({...formData, admin_email: e.target.value})} 
+                  required
+                />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-xs font-bold text-slate-500 mb-1">Admin Password</label>
+                <Input 
+                  placeholder="Enter a secure password" 
+                  type="password"
+                  value={formData.admin_password} 
+                  onChange={e => setFormData({...formData, admin_password: e.target.value})} 
+                  required
+                />
+              </div>
+            </div>
+          </div>
+          
+          <div className="pt-2">
+            <Button type="submit">Create Tenant</Button>
+          </div>
         </form>
       </div>
 

@@ -1,24 +1,30 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useStore } from '../../store';
 import { Phone, Mail } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
+import { AddLeadModal } from '../../components/crm/AddLeadModal';
 
 export default function LeadsList() {
   const currentUser = useStore(state => state.currentUser);
   const leads = useStore(state => state.leads);
+  const activeTenantId = useStore(state => state.activeTenantId);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   
   if (!currentUser) return null;
 
-  const tenantLeads = leads.filter(l => l.tenantId === currentUser.tenantId);
+  const tenantId = currentUser.role === 'master' ? activeTenantId : currentUser.tenantId;
+  const tenantLeads = leads.filter(l => l.tenantId === tenantId);
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">All Leads</h1>
-        <Button>Add Lead</Button>
+        <Button onClick={() => setIsModalOpen(true)}>Add Lead</Button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        {/* ... table content remains the same ... */}
+
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
@@ -63,6 +69,7 @@ export default function LeadsList() {
           </tbody>
         </table>
       </div>
+      <AddLeadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
     </div>
   );
 }

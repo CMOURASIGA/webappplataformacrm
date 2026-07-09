@@ -10,6 +10,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Tenants from './pages/master/Tenants';
 import Kanban from './pages/crm/Kanban';
+import KanbanConfig from './pages/crm/KanbanConfig';
 import LeadsList from './pages/crm/LeadsList';
 import Chat from './pages/chat/Chat';
 import Settings from './pages/admin/Settings';
@@ -24,6 +25,7 @@ export default function App() {
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<Dashboard />} />
           <Route path="crm" element={<Kanban />} />
+          <Route path="settings/kanban" element={<KanbanConfig />} />
           <Route path="leads" element={<LeadsList />} />
           <Route path="chat" element={<Chat />} />
           <Route path="settings" element={<Settings />} />
