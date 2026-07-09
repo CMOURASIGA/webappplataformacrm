@@ -34,6 +34,7 @@
     "openai": "^6.45.0",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "react-is": "^19.2.7",
     "react-quill": "^2.0.0",
     "react-router-dom": "^7.18.1",
     "recharts": "^3.9.2",

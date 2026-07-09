@@ -1107,27 +1107,8 @@ app.get('/api/master/ai-usage', authenticate, (req: any, res: any) => {
 });
 
 
-async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), 'dist');
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
-  }
 
-  app.use((err: any, req: any, res: any, next: any) => {
-    console.error('Express global error:', err);
-    res.status(err.status || 500).json({ error: err.message });
-  });
 
-  
 app.get('/api/whatsapp/status', authenticate, (req: any, res: any) => {
   const { tenantId } = req.user;
   const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
@@ -1237,6 +1218,33 @@ app.post('/api/meta/webhook', (req: any, res: any) => {
     res.sendStatus(404);
   }
 });
+
+
+
+app.use('/api', (req, res) => res.status(404).json({ error: 'API route not found' }));
+
+async function startServer() {
+
+  if (process.env.NODE_ENV !== "production") {
+    const vite = await createViteServer({
+      server: { middlewareMode: true },
+      appType: "spa",
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error('Express global error:', err);
+    res.status(err.status || 500).json({ error: err.message });
+  });
+
+  
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);

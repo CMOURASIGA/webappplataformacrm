@@ -1,0 +1,198 @@
+{
+  "inputs": {
+    "src/db/index.ts": {
+      "bytes": 1833,
+      "imports": [
+        {
+          "path": "better-sqlite3",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "path",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "fs",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "bcryptjs",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "esm"
+    },
+    "src/services/openaiService.ts": {
+      "bytes": 845,
+      "imports": [
+        {
+          "path": "openai",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "esm"
+    },
+    "server.ts": {
+      "bytes": 47636,
+      "imports": [
+        {
+          "path": "express",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "path",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "cors",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "vite",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "src/db/index.ts",
+          "kind": "import-statement",
+          "original": "./src/db/index"
+        },
+        {
+          "path": "bcryptjs",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "jsonwebtoken",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "multer",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "fs",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "dotenv/config",
+          "kind": "import-statement",
+          "external": true
+        },
+        {
+          "path": "src/services/openaiService.ts",
+          "kind": "import-statement",
+          "original": "./src/services/openaiService"
+        },
+        {
+          "path": "crypto",
+          "kind": "import-statement",
+          "external": true
+        }
+      ],
+      "format": "esm"
+    }
+  },
+  "outputs": {
+    "dist/server.cjs.map": {
+      "imports": [],
+      "exports": [],
+      "inputs": {},
+      "bytes": 81853
+    },
+    "dist/server.cjs": {
+      "imports": [
+        {
+          "path": "express",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "path",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "cors",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "vite",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "better-sqlite3",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "path",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "fs",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "bcryptjs",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "bcryptjs",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "jsonwebtoken",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "dotenv/config",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "openai",
+          "kind": "require-call",
+          "external": true
+        },
+        {
+          "path": "crypto",
+          "kind": "require-call",
+          "external": true
+        }
+      ],
+      "exports": [],
+      "entryPoint": "server.ts",
+      "inputs": {
+        "server.ts": {
+          "bytesInOutput": 46661
+        },
+        "src/db/index.ts": {
+          "bytesInOutput": 1871
+        },
+        "src/services/openaiService.ts": {
+          "bytesInOutput": 740
+        }
+      },
+      "bytes": 50566
+    }
+  }
+}
