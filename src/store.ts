@@ -25,6 +25,7 @@ interface AppState {
   quickReplies: QuickReply[];
   tags: TenantTag[];
   isInitialized: boolean;
+  initError: string | null;
   activeTenantId: string | null;
 
   // Actions
@@ -75,6 +76,7 @@ export const useStore = create<AppState>()(
       quickReplies: [],
       tags: [],
       isInitialized: false,
+      initError: null,
       activeTenantId: localStorage.getItem('activeTenantId'),
 
       login: async (email, password = 'password') => {
@@ -102,7 +104,7 @@ export const useStore = create<AppState>()(
         } else {
           localStorage.removeItem('activeTenantId');
         }
-        set({ activeTenantId: id, isInitialized: false });
+        set({ activeTenantId: id, isInitialized: false, initError: null });
         await get().initializeData();
       },
 
@@ -156,6 +158,8 @@ export const useStore = create<AppState>()(
           }
         } catch (error) {
           console.error("Failed to initialize data:", error);
+          set({ initError: error.message });
+alert("Erro de inicialização: " + error.message);
         }
       },
 

@@ -32,7 +32,14 @@ const authenticate = (req: any, res: any, next: any) => {
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, JWT_SECRET) as any;
+    
+    // Verify user still exists in database
+    const user = db.prepare('SELECT id, role, tenant_id FROM users WHERE id = ?').get(decoded.id) as any;
+    if (!user) {
+      return res.status(401).json({ error: 'User no longer exists' });
+    }
+    
     req.user = decoded;
     
     // Master impersonation logic: if master provides a tenant ID header, use it
@@ -45,6 +52,7 @@ const authenticate = (req: any, res: any, next: any) => {
     res.status(401).json({ error: 'Invalid token' });
   }
 };
+
 // Dashboard Endpoints
 app.get('/api/dashboard/master', authenticate, (req: any, res: any) => {
   if (req.user.role !== 'master') {

@@ -20,6 +20,7 @@ export function AppLayout() {
     currentUser,
     tenants,
     isInitialized,
+    initError,
     initializeData,
     logout,
     activeTenantId,
@@ -54,6 +55,14 @@ export function AppLayout() {
   }
 
   // Show a loading screen while initializing
+  if (initError) {
+    return (
+      <div className="flex flex-col h-screen items-center justify-center bg-slate-50 gap-4">
+        <p className="text-red-500 font-bold">Erro ao carregar dados: {initError}</p>
+        <button onClick={logout} className="px-4 py-2 bg-slate-200 rounded">Sair</button>
+      </div>
+    );
+  }
   if (!isInitialized) {
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
