@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
-import db from './src/db/index.js';
+import db, { ensureDatabaseReady, markDatabaseDirty, persistDatabaseIfNeeded } from './src/db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
@@ -18,6 +18,20 @@ if (!JWT_SECRET) {
 
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
+
+app.use('/api', async (_req, _res, next) => {
+  try {
+    await ensureDatabaseReady();
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+async function commitDbChanges() {
+  markDatabaseDirty();
+  await persistDatabaseIfNeeded();
+}
 
 // API Routes
 
@@ -111,7 +125,7 @@ app.get('/api/knowledge-bases', authenticate, (req: any, res: any) => {
   res.json(bases);
 });
 
-app.post('/api/knowledge-bases', authenticate, (req: any, res: any) => {
+app.post('/api/knowledge-bases', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
   const { name, description } = req.body;
   if (!name) return res.status(400).json({ error: 'Nome obrigatório' });
@@ -125,6 +139,7 @@ app.post('/api/knowledge-bases', authenticate, (req: any, res: any) => {
     Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'Base Criada', 'knowledge_bases', newId
   );
   
+  await commitDbChanges();
   res.json({ id: newId });
 });
 
@@ -140,7 +155,7 @@ app.get('/api/users', authenticate, (req: any, res: any) => {
   res.json(users);
 });
 
-app.post('/api/users', authenticate, (req: any, res: any) => {
+app.post('/api/users', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   if (role !== 'admin' && role !== 'master') {
     return res.status(403).json({ error: 'Não autorizado' });
@@ -161,6 +176,7 @@ app.post('/api/users', authenticate, (req: any, res: any) => {
       Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'Usuário Criado', 'users', newId
     );
     
+    await commitDbChanges();
     res.json({ success: true, id: newId });
   } catch (err: any) {
     if (err.message.includes('UNIQUE constraint failed')) {
@@ -301,7 +317,7 @@ app.get('/api/admin/tenants', authenticate, (req: any, res: any) => {
   })));
 });
 
-app.post('/api/admin/tenants', authenticate, (req: any, res: any) => {
+app.post('/api/admin/tenants', authenticate, async (req: any, res: any) => {
   if (req.user.role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
   const { name, company_name, email, admin_name, admin_email, admin_password } = req.body;
@@ -325,6 +341,7 @@ app.post('/api/admin/tenants', authenticate, (req: any, res: any) => {
     
     db.prepare('COMMIT').run();
     
+    await commitDbChanges();
     res.json({ success: true, tenantId });
   } catch (err: any) {
     db.prepare('ROLLBACK').run();
@@ -341,13 +358,14 @@ app.get('/api/tenant/settings', authenticate, (req: any, res: any) => {
   res.json(settings);
 });
 
-app.patch('/api/tenant/settings', authenticate, (req: any, res: any) => {
+app.patch('/api/tenant/settings', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
   try {
     const { company_name, primary_color, logo_url, sidebar_color, sidebar_text_color } = req.body;
     db.prepare('UPDATE tenant_settings SET company_name = ?, primary_color = ?, logo_url = ?, sidebar_color = ?, sidebar_text_color = ? WHERE tenant_id = ?').run(company_name, primary_color, logo_url, sidebar_color, sidebar_text_color, tenantId);
+    await commitDbChanges();
     res.json({ success: true });
   } catch (error: any) {
     console.error('Error updating tenant settings:', error);
@@ -390,7 +408,7 @@ app.get('/api/tags', authenticate, (req: any, res: any) => {
   })));
 });
 
-app.post('/api/tags', authenticate, (req: any, res: any) => {
+app.post('/api/tags', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
@@ -400,6 +418,7 @@ app.post('/api/tags', authenticate, (req: any, res: any) => {
   db.prepare('INSERT INTO tenant_tags (id, tenant_id, name, color) VALUES (?, ?, ?, ?)').run(id, tenantId, name, color);
   
   const newTag = db.prepare('SELECT * FROM tenant_tags WHERE id = ?').get(id) as any;
+  await commitDbChanges();
   res.json({
     id: newTag.id,
     tenantId: newTag.tenant_id,
@@ -409,12 +428,13 @@ app.post('/api/tags', authenticate, (req: any, res: any) => {
   });
 });
 
-app.delete('/api/tags/:id', authenticate, (req: any, res: any) => {
+app.delete('/api/tags/:id', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
   const { id } = req.params;
   db.prepare('DELETE FROM tenant_tags WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+  await commitDbChanges();
   res.json({ success: true });
 });
 
@@ -431,7 +451,7 @@ app.get('/api/quick-replies', authenticate, (req: any, res: any) => {
   })));
 });
 
-app.post('/api/quick-replies', authenticate, (req: any, res: any) => {
+app.post('/api/quick-replies', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   
   const { title, text } = req.body;
@@ -440,6 +460,7 @@ app.post('/api/quick-replies', authenticate, (req: any, res: any) => {
   db.prepare('INSERT INTO quick_replies (id, tenant_id, title, text) VALUES (?, ?, ?, ?)').run(id, tenantId, title, text);
   
   const newReply = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(id) as any;
+  await commitDbChanges();
   res.json({
     id: newReply.id,
     tenantId: newReply.tenant_id,
@@ -449,15 +470,16 @@ app.post('/api/quick-replies', authenticate, (req: any, res: any) => {
   });
 });
 
-app.delete('/api/quick-replies/:id', authenticate, (req: any, res: any) => {
+app.delete('/api/quick-replies/:id', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   const { id } = req.params;
   db.prepare('DELETE FROM quick_replies WHERE id = ? AND tenant_id = ?').run(id, tenantId);
+  await commitDbChanges();
   res.json({ success: true });
 });
 
 // Stages
-app.post('/api/pipelines/:pipelineId/stages', authenticate, (req: any, res: any) => {
+app.post('/api/pipelines/:pipelineId/stages', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
@@ -471,10 +493,11 @@ app.post('/api/pipelines/:pipelineId/stages', authenticate, (req: any, res: any)
   
   db.prepare('INSERT INTO pipeline_stages (id, pipeline_id, name, "order") VALUES (?, ?, ?, ?)').run(id, pipelineId, name, order);
   
+  await commitDbChanges();
   res.json({ success: true });
 });
 
-app.delete('/api/stages/:id', authenticate, (req: any, res: any) => {
+app.delete('/api/stages/:id', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Forbidden' });
   
@@ -485,6 +508,7 @@ app.delete('/api/stages/:id', authenticate, (req: any, res: any) => {
   if (!stage) return res.status(404).json({ error: 'Stage not found' });
   
   db.prepare('DELETE FROM pipeline_stages WHERE id = ?').run(id);
+  await commitDbChanges();
   res.json({ success: true });
 });
 
@@ -511,7 +535,7 @@ app.get('/api/leads', authenticate, (req: any, res: any) => {
   })));
 });
 
-app.post('/api/leads', authenticate, (req: any, res: any) => {
+app.post('/api/leads', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
   const { name, phone, email, company, source, stage_id, pipeline_id, tags = [] } = req.body;
   
@@ -522,6 +546,7 @@ app.post('/api/leads', authenticate, (req: any, res: any) => {
   `).run(id, tenantId, name, phone, email, company, source, stage_id, pipeline_id, JSON.stringify(tags));
   
   const newLead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
+  await commitDbChanges();
   res.json({
     ...newLead,
     tenantId: newLead.tenant_id,
@@ -533,7 +558,7 @@ app.post('/api/leads', authenticate, (req: any, res: any) => {
   });
 });
 
-app.patch('/api/leads/:id', authenticate, (req: any, res: any) => {
+app.patch('/api/leads/:id', authenticate, async (req: any, res: any) => {
   const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
   const { stage_id, tags } = req.body;
@@ -554,11 +579,12 @@ app.patch('/api/leads/:id', authenticate, (req: any, res: any) => {
   if (tags) {
     db.prepare('UPDATE leads SET tags = ? WHERE id = ? AND tenant_id = ?').run(JSON.stringify(tags), id, tenantId);
   }
+  await commitDbChanges();
   res.json({ success: true });
 });
 
 // Conversations
-app.post('/api/conversations', authenticate, (req: any, res: any) => {
+app.post('/api/conversations', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
   const { lead_id } = req.body;
   
@@ -579,6 +605,7 @@ app.post('/api/conversations', authenticate, (req: any, res: any) => {
   db.prepare('INSERT INTO conversations (id, tenant_id, lead_id) VALUES (?, ?, ?)').run(id, tenantId, lead_id);
   
   const newConv = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as any;
+  await commitDbChanges();
   res.json({
     ...newConv,
     tenantId: newConv.tenant_id,
@@ -643,7 +670,7 @@ app.get('/api/conversations/:id/messages', authenticate, (req: any, res: any) =>
 });
 
 
-app.patch('/api/conversations/:id/assign', authenticate, (req: any, res: any) => {
+app.patch('/api/conversations/:id/assign', authenticate, async (req: any, res: any) => {
   const { tenantId, id: currentUserId, role } = req.user;
   const { id } = req.params;
   const { assigned_to } = req.body;
@@ -672,10 +699,11 @@ app.patch('/api/conversations/:id/assign', authenticate, (req: any, res: any) =>
     assigned_to
   );
 
+  await commitDbChanges();
   res.json({ success: true });
 });
 
-app.patch('/api/conversations/:id/status', authenticate, (req: any, res: any) => {
+app.patch('/api/conversations/:id/status', authenticate, async (req: any, res: any) => {
   const { tenantId, id: currentUserId, role } = req.user;
   const { id } = req.params;
   const { status, close_reason } = req.body;
@@ -704,6 +732,7 @@ app.patch('/api/conversations/:id/status', authenticate, (req: any, res: any) =>
     status
   );
 
+  await commitDbChanges();
   res.json({ success: true });
 });
 
@@ -766,6 +795,7 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: 
   }
   
   const newMessage = db.prepare('SELECT * FROM messages WHERE id = ?').get(messageId);
+  await commitDbChanges();
   res.json(newMessage);
 });
 
@@ -787,12 +817,13 @@ function getTenantAiUsageThisMonth(tenantId: string) {
   return Number(row?.total || 0);
 }
 
-function ensureTenantCanUseAi(tenantId: string) {
+async function ensureTenantCanUseAi(tenantId: string) {
   let settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
 
   if (!settings) {
     db.prepare('INSERT INTO ai_settings (tenant_id, model) VALUES (?, ?)').run(tenantId, process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini');
     settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
+    await commitDbChanges();
   }
 
   if (!settings || !settings.enabled) {
@@ -809,7 +840,7 @@ function ensureTenantCanUseAi(tenantId: string) {
   return settings;
 }
 
-app.get('/api/ai/settings', authenticate, (req: any, res: any) => {
+app.get('/api/ai/settings', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
   if (!tenantId) return res.json({ enabled: 0, model: process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini', tone: '', company_context: '', business_rules: '', monthly_token_limit: 100000, current_usage: 0 });
   
@@ -817,13 +848,14 @@ app.get('/api/ai/settings', authenticate, (req: any, res: any) => {
   if (!settings) {
     db.prepare('INSERT INTO ai_settings (tenant_id, model) VALUES (?, ?)').run(tenantId, process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini');
     settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
+    await commitDbChanges();
   }
   
   settings.current_usage = getTenantAiUsageThisMonth(tenantId);
   res.json(settings);
 });
 
-app.patch('/api/ai/settings', authenticate, (req: any, res: any) => {
+app.patch('/api/ai/settings', authenticate, async (req: any, res: any) => {
   if (req.user.role !== 'admin' && req.user.role !== 'master') {
     return res.status(403).json({ error: 'Apenas administradores podem configurar a IA' });
   }
@@ -851,6 +883,7 @@ app.patch('/api/ai/settings', authenticate, (req: any, res: any) => {
     tenantId
   );
   
+  await commitDbChanges();
   res.json({ success: true });
 });
 
@@ -859,7 +892,7 @@ app.post('/api/ai/suggest-reply', authenticate, async (req: any, res: any) => {
   const { conversationId } = req.body;
 
   try {
-    const settings = ensureTenantCanUseAi(tenantId);
+    const settings = await ensureTenantCanUseAi(tenantId);
 
     const conversation = db.prepare(`
       SELECT c.*, l.name as lead_name, l.phone as lead_phone, l.email as lead_email, l.company as lead_company
@@ -927,6 +960,7 @@ Responda em português do Brasil. Apenas forneça o texto sugerido para a respos
       'success'
     );
 
+    await commitDbChanges();
     res.json({
       suggestion: ai.text,
       usage: {
@@ -945,7 +979,7 @@ app.post('/api/ai/summarize-conversation', authenticate, async (req: any, res: a
   const { conversationId } = req.body;
 
   try {
-    const settings = ensureTenantCanUseAi(tenantId);
+    const settings = await ensureTenantCanUseAi(tenantId);
 
     const conversation = db.prepare(`
       SELECT c.*, l.id as lead_id, l.name as lead_name, l.phone as lead_phone, l.email as lead_email
@@ -1008,6 +1042,7 @@ Mensagens: ${JSON.stringify(messages)}
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(logId, tenantId, userId, conversationId, conversation.lead_id, 'summarize_conversation', ai.model, inputTokens, outputTokens, totalTokens, 'success');
 
+    await commitDbChanges();
     res.json(parsed);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1019,7 +1054,7 @@ app.post('/api/ai/classify-lead', authenticate, async (req: any, res: any) => {
   const { leadId } = req.body;
 
   try {
-    const settings = ensureTenantCanUseAi(tenantId);
+    const settings = await ensureTenantCanUseAi(tenantId);
 
     const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND tenant_id = ?').get(leadId, tenantId) as any;
     if (!lead) {
@@ -1077,6 +1112,7 @@ Mensagens: ${JSON.stringify(allMessages)}
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(logId, tenantId, userId, leadId, 'classify_lead', ai.model, inputTokens, outputTokens, totalTokens, 'success');
 
+    await commitDbChanges();
     res.json(parsed);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -1114,7 +1150,7 @@ app.get('/api/whatsapp/status', authenticate, (req: any, res: any) => {
   res.json(connection || null);
 });
 
-app.post('/api/whatsapp/connect', authenticate, (req: any, res: any) => {
+app.post('/api/whatsapp/connect', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
   const { phone_number_id, waba_id, access_token, display_phone_number } = req.body;
   
@@ -1138,10 +1174,11 @@ app.post('/api/whatsapp/connect', authenticate, (req: any, res: any) => {
     Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Conectado', 'whatsapp_connections'
   );
   
+  await commitDbChanges();
   res.json({ success: true });
 });
 
-app.post('/api/whatsapp/disconnect', authenticate, (req: any, res: any) => {
+app.post('/api/whatsapp/disconnect', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
   db.prepare('DELETE FROM whatsapp_connections WHERE tenant_id = ?').run(tenantId);
   
@@ -1149,6 +1186,7 @@ app.post('/api/whatsapp/disconnect', authenticate, (req: any, res: any) => {
     Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Desconectado', 'whatsapp_connections'
   );
   
+  await commitDbChanges();
   res.json({ success: true });
 });
 
@@ -1161,8 +1199,9 @@ app.get('/api/meta/webhook', (req: any, res: any) => {
   }
 });
 
-app.post('/api/meta/webhook', (req: any, res: any) => {
+app.post('/api/meta/webhook', async (req: any, res: any) => {
   const body = req.body;
+  let hasChanges = false;
   
   if (body.object === 'whatsapp_business_account') {
     // Implementação básica de recebimento para o MVP
@@ -1185,6 +1224,7 @@ app.post('/api/meta/webhook', (req: any, res: any) => {
                          newLeadId, connection.tenant_id, 'Lead ' + fromPhone, fromPhone, 'whatsapp'
                       );
                       lead = { id: newLeadId, tenant_id: connection.tenant_id };
+                      hasChanges = true;
                   }
                   
                   let conv = db.prepare('SELECT * FROM conversations WHERE tenant_id = ? AND lead_id = ? AND status != ?').get(connection.tenant_id, lead.id, 'closed') as any;
@@ -1194,8 +1234,10 @@ app.post('/api/meta/webhook', (req: any, res: any) => {
                          newConvId, connection.tenant_id, lead.id, 'WAPP-' + Date.now()
                       );
                       conv = { id: newConvId };
+                      hasChanges = true;
                   } else if (conv.status === 'closed') {
                      db.prepare('UPDATE conversations SET status = ? WHERE id = ?').run('reopened', conv.id);
+                     hasChanges = true;
                   }
                   
                   db.prepare('INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, text, external_message_id) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
@@ -1207,11 +1249,15 @@ app.post('/api/meta/webhook', (req: any, res: any) => {
                       msg.text?.body || '[Arquivo]',
                       msg.id
                   );
+                  hasChanges = true;
               }
           }
        });
     });
     
+    if (hasChanges) {
+      await commitDbChanges();
+    }
     res.sendStatus(200);
   } else {
     res.sendStatus(404);
