@@ -195,7 +195,7 @@ alert("Erro de inicialização: " + error.message);
 
       updateTenantSettings: async (tenantId, settings) => {
         try {
-          await fetchApi('/tenant/settings', {
+          const persistedSettings = await fetchApi('/tenant/settings', {
             method: 'PATCH',
             body: JSON.stringify({ 
               company_name: settings.companyName, 
@@ -205,7 +205,6 @@ alert("Erro de inicialização: " + error.message);
               sidebar_text_color: settings.sidebarTextColor 
             })
           });
-          const persistedSettings = await fetchApi('/tenant/settings');
           set(state => ({
             tenants: state.tenants.map(t => 
               t.id === tenantId 

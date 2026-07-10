@@ -349,13 +349,45 @@ app.post('/api/admin/tenants', authenticate, async (req: any, res: any) => {
   }
 });
 
+function normalizeTenantSettings(settings: any, fallbackCompanyName = 'CRM Flow') {
+  return {
+    company_name: settings?.company_name || fallbackCompanyName,
+    logo_url: settings?.logo_url || '',
+    primary_color: settings?.primary_color || '#4f46e5',
+    sidebar_color: settings?.sidebar_color || '#0F172A',
+    sidebar_text_color: settings?.sidebar_text_color || '#cbd5e1',
+  };
+}
+
 // Tenant Details and Settings
-app.get('/api/tenant/settings', authenticate, (req: any, res: any) => {
+app.get('/api/tenant/settings', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
-  if (role === 'master' && !tenantId) return res.json({ company_name: 'Master Panel', primary_color: '#4f46e5' });
+  if (role === 'master' && !tenantId) {
+    return res.json(normalizeTenantSettings({ company_name: 'Master Panel' }, 'Master Panel'));
+  }
   
-  const settings = db.prepare('SELECT * FROM tenant_settings WHERE tenant_id = ?').get(tenantId);
-  res.json(settings);
+  const tenant = db.prepare('SELECT name FROM tenants WHERE id = ?').get(tenantId) as any;
+  if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+  let settings = db.prepare('SELECT * FROM tenant_settings WHERE tenant_id = ?').get(tenantId) as any;
+
+  if (!settings) {
+    db.prepare(`
+      INSERT INTO tenant_settings (tenant_id, company_name, primary_color, logo_url, sidebar_color, sidebar_text_color)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(
+      tenantId,
+      tenant.name,
+      '#4f46e5',
+      '',
+      '#0F172A',
+      '#cbd5e1'
+    );
+    await commitDbChanges();
+    settings = db.prepare('SELECT * FROM tenant_settings WHERE tenant_id = ?').get(tenantId) as any;
+  }
+
+  res.json(normalizeTenantSettings(settings, tenant.name));
 });
 
 app.patch('/api/tenant/settings', authenticate, async (req: any, res: any) => {
@@ -364,9 +396,34 @@ app.patch('/api/tenant/settings', authenticate, async (req: any, res: any) => {
   
   try {
     const { company_name, primary_color, logo_url, sidebar_color, sidebar_text_color } = req.body;
-    db.prepare('UPDATE tenant_settings SET company_name = ?, primary_color = ?, logo_url = ?, sidebar_color = ?, sidebar_text_color = ? WHERE tenant_id = ?').run(company_name, primary_color, logo_url, sidebar_color, sidebar_text_color, tenantId);
+    const tenant = db.prepare('SELECT name FROM tenants WHERE id = ?').get(tenantId) as any;
+    if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+    const normalized = normalizeTenantSettings(
+      { company_name, primary_color, logo_url, sidebar_color, sidebar_text_color },
+      tenant.name
+    );
+
+    db.prepare(`
+      INSERT INTO tenant_settings (tenant_id, company_name, primary_color, logo_url, sidebar_color, sidebar_text_color)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(tenant_id) DO UPDATE SET
+        company_name = excluded.company_name,
+        primary_color = excluded.primary_color,
+        logo_url = excluded.logo_url,
+        sidebar_color = excluded.sidebar_color,
+        sidebar_text_color = excluded.sidebar_text_color
+    `).run(
+      tenantId,
+      normalized.company_name,
+      normalized.primary_color,
+      normalized.logo_url,
+      normalized.sidebar_color,
+      normalized.sidebar_text_color
+    );
     await commitDbChanges();
-    res.json({ success: true });
+    const savedSettings = db.prepare('SELECT * FROM tenant_settings WHERE tenant_id = ?').get(tenantId) as any;
+    res.json(normalizeTenantSettings(savedSettings, tenant.name));
   } catch (error: any) {
     console.error('Error updating tenant settings:', error);
     res.status(500).json({ error: error.message });
