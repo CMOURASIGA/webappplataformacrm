@@ -144,6 +144,9 @@ export default function Settings() {
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">White Label Settings</h1>
+      <p className="text-sm text-slate-500 -mt-4">
+        As alteracoes salvas aqui valem para todo o tenant, incluindo o acesso do atendente.
+      </p>
       
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <form onSubmit={handleSave} className="space-y-6">

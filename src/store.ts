@@ -205,6 +205,7 @@ alert("Erro de inicialização: " + error.message);
               sidebar_text_color: settings.sidebarTextColor 
             })
           });
+          const persistedSettings = await fetchApi('/tenant/settings');
           set(state => ({
             tenants: state.tenants.map(t => 
               t.id === tenantId 
@@ -212,11 +213,11 @@ alert("Erro de inicialização: " + error.message);
                     ...t, 
                     settings: { 
                       ...(t.settings || {}),
-                      companyName: settings.companyName,
-                      primaryColor: settings.primaryColor,
-                      logoUrl: settings.logoUrl,
-                      sidebarColor: settings.sidebarColor,
-                      sidebarTextColor: settings.sidebarTextColor
+                      companyName: persistedSettings.company_name,
+                      primaryColor: persistedSettings.primary_color,
+                      logoUrl: persistedSettings.logo_url,
+                      sidebarColor: persistedSettings.sidebar_color,
+                      sidebarTextColor: persistedSettings.sidebar_text_color
                     } 
                   } 
                 : t
