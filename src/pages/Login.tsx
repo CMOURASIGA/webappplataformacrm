@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Building2 } from 'lucide-react';
 
 export default function Login() {
   const [email, setEmail] = useState('master@crm.com');
@@ -42,8 +41,8 @@ export default function Login() {
           <p className="font-bold text-primary-800 mb-2">Credenciais de Acesso:</p>
           <ul className="list-disc pl-4 space-y-1 text-left text-xs text-primary-700">
             <li><strong>Master:</strong> master@crm.com / master123</li>
-            <li><strong>Admin Cliente:</strong> Acesse como Master e crie um Tenant.</li>
-            <li><strong>Atendente:</strong> (O Admin Cliente criará futuramente)</li>
+            <li><strong>Admin Cliente:</strong> admin@cliente.com / admin123</li>
+            <li><strong>Atendente:</strong> atendente@cliente.com / atendente123</li>
           </ul>
         </div>
       </div>

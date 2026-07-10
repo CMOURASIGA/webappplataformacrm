@@ -22,6 +22,7 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   if (!response.ok) {
     if (response.status === 401) {
       localStorage.removeItem('token');
+      localStorage.removeItem('activeTenantId');
       localStorage.removeItem('crm-storage');
       window.location.href = '/login';
     }

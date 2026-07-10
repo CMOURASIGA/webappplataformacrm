@@ -104,6 +104,14 @@ async function pullBlobDatabaseIfNeeded() {
 function applySchemaAndSeed() {
   const db = getConnection();
   let changed = false;
+  const demoTenantId = 't1_demo';
+  const demoPipelineId = 'p1_demo';
+  const demoStageNewId = 's1_demo_new';
+  const demoStageServiceId = 's1_demo_service';
+  const demoStageClosingId = 's1_demo_closing';
+  const masterUserId = 'u1_master';
+  const adminUserId = 'u2_demo_admin';
+  const agentUserId = 'u3_demo_agent';
 
   if (fs.existsSync(schemaPath)) {
     const schema = fs.readFileSync(schemaPath, 'utf-8');
@@ -140,14 +148,98 @@ function applySchemaAndSeed() {
     changed = true;
   } catch {}
 
-  const masterExists = db.prepare('SELECT 1 FROM users WHERE role = ?').get('master');
+  const masterExists = db.prepare('SELECT 1 FROM users WHERE id = ?').get(masterUserId);
   if (!masterExists) {
     const hash = bcrypt.hashSync('master123', 10);
     db.prepare(`
       INSERT INTO users (id, name, email, password_hash, role)
       VALUES (?, ?, ?, ?, ?)
-    `).run('u1_master', 'Master Admin', 'master@crm.com', hash, 'master');
+    `).run(masterUserId, 'Master Admin', 'master@crm.com', hash, 'master');
     changed = true;
+  }
+
+  const demoTenantExists = db.prepare('SELECT 1 FROM tenants WHERE id = ?').get(demoTenantId);
+  if (!demoTenantExists) {
+    db.prepare(`
+      INSERT INTO tenants (id, name, email, phone, status)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(demoTenantId, 'CRM Demo', 'contato@crmdemo.com', '(11) 99999-0000', 'active');
+    changed = true;
+  }
+
+  const demoSettingsExists = db.prepare('SELECT 1 FROM tenant_settings WHERE tenant_id = ?').get(demoTenantId);
+  if (!demoSettingsExists) {
+    db.prepare(`
+      INSERT INTO tenant_settings (tenant_id, company_name, primary_color, sidebar_color, sidebar_text_color)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(demoTenantId, 'CRM Demo', '#4f46e5', '#0F172A', '#cbd5e1');
+    changed = true;
+  }
+
+  const demoPipelineExists = db.prepare('SELECT 1 FROM pipelines WHERE id = ?').get(demoPipelineId);
+  if (!demoPipelineExists) {
+    db.prepare('INSERT INTO pipelines (id, tenant_id, name) VALUES (?, ?, ?)').run(
+      demoPipelineId,
+      demoTenantId,
+      'Funil de Vendas'
+    );
+    changed = true;
+  }
+
+  const demoStages = [
+    { id: demoStageNewId, name: 'Novo Lead', order: 0 },
+    { id: demoStageServiceId, name: 'Em Atendimento', order: 1 },
+    { id: demoStageClosingId, name: 'Fechamento', order: 2 },
+  ];
+
+  for (const stage of demoStages) {
+    const stageExists = db.prepare('SELECT 1 FROM pipeline_stages WHERE id = ?').get(stage.id);
+    if (!stageExists) {
+      db.prepare('INSERT INTO pipeline_stages (id, pipeline_id, name, "order") VALUES (?, ?, ?, ?)').run(
+        stage.id,
+        demoPipelineId,
+        stage.name,
+        stage.order
+      );
+      changed = true;
+    }
+  }
+
+  const seedUsers = [
+    {
+      id: adminUserId,
+      tenantId: demoTenantId,
+      name: 'Admin Cliente',
+      email: 'admin@cliente.com',
+      password: 'admin123',
+      role: 'admin',
+    },
+    {
+      id: agentUserId,
+      tenantId: demoTenantId,
+      name: 'Atendente Cliente',
+      email: 'atendente@cliente.com',
+      password: 'atendente123',
+      role: 'user',
+    },
+  ];
+
+  for (const user of seedUsers) {
+    const userExists = db.prepare('SELECT 1 FROM users WHERE id = ?').get(user.id);
+    if (!userExists) {
+      db.prepare(`
+        INSERT INTO users (id, tenant_id, name, email, password_hash, role)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        user.id,
+        user.tenantId,
+        user.name,
+        user.email,
+        bcrypt.hashSync(user.password, 10),
+        user.role
+      );
+      changed = true;
+    }
   }
 
   return changed;

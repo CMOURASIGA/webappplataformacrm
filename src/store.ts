@@ -156,8 +156,25 @@ export const useStore = create<AppState>()(
             
             set({ tenants: [tenant], pipelines, leads, conversations, tags, quickReplies, isInitialized: true });
           }
-        } catch (error) {
+        } catch (error: any) {
           console.error("Failed to initialize data:", error);
+          if (!localStorage.getItem('token')) {
+            set({
+              currentUser: null,
+              users: [],
+              tenants: [],
+              pipelines: [],
+              leads: [],
+              conversations: [],
+              messages: [],
+              quickReplies: [],
+              tags: [],
+              isInitialized: false,
+              initError: null,
+              activeTenantId: null
+            });
+            return;
+          }
           set({ initError: error.message });
 alert("Erro de inicialização: " + error.message);
         }
@@ -426,4 +443,3 @@ alert("Erro de inicialização: " + error.message);
     }
   )
 );
-
