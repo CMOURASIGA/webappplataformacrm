@@ -1,9 +1,5 @@
 import OpenAI from 'openai';
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
 type AiResponseParams = {
   system: string;
   user: string;
@@ -20,6 +16,10 @@ export async function generateAiResponse({
   if (!process.env.OPENAI_API_KEY) {
     throw new Error('OPENAI_API_KEY não configurada');
   }
+
+  const client = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+  });
 
   const response = await client.chat.completions.create({
     model,

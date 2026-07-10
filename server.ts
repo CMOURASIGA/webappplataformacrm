@@ -1,7 +1,6 @@
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
-import { createServer as createViteServer } from 'vite';
 import db from './src/db/index';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -1226,6 +1225,7 @@ app.use('/api', (req, res) => res.status(404).json({ error: 'API route not found
 async function startServer() {
 
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -1251,4 +1251,8 @@ app.listen(PORT, '0.0.0.0', () => {
   });
 }
 
-startServer();
+export default app;
+
+if (!process.env.VERCEL) {
+  startServer();
+}
