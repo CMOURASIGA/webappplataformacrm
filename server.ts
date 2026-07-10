@@ -1,7 +1,7 @@
 import express from 'express';
 import path from 'path';
 import cors from 'cors';
-import db from './src/db/index';
+import db from './src/db/index.js';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
@@ -773,7 +773,7 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: 
 // Vite middleware for dev
 
 // AI Routes
-import { generateAiResponse } from './src/services/openaiService';
+import { generateAiResponse } from './src/services/openaiService.js';
 import crypto from 'crypto';
 
 function getTenantAiUsageThisMonth(tenantId: string) {
@@ -1246,13 +1246,11 @@ async function startServer() {
 
   
 
-app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
 }
 
 export default app;
 
-if (!process.env.VERCEL) {
-  startServer();
-}
+export { startServer };
