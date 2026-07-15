@@ -432,24 +432,33 @@ app.patch('/api/tenant/settings', authenticate, async (req: any, res: any) => {
 
 // Pipelines and Stages
 app.get('/api/pipelines', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
-  const pipelines = db.prepare('SELECT * FROM pipelines WHERE tenant_id = ?').all(tenantId);
-  const stages = db.prepare('SELECT ps.* FROM pipeline_stages ps JOIN pipelines p ON ps.pipeline_id = p.id WHERE p.tenant_id = ? ORDER BY ps."order"').all(tenantId);
-  
-  const pipelinesWithStages = pipelines.map((p: any) => ({
-    id: p.id,
-    tenantId: p.tenant_id,
-    name: p.name,
-    createdAt: p.created_at,
-    stages: stages.filter((s: any) => s.pipeline_id === p.id).map((s: any) => ({
-      id: s.id,
-      pipelineId: s.pipeline_id,
-      name: s.name,
-      order: s.order
-    }))
-  }));
-  
-  res.json(pipelinesWithStages);
+  try {
+    const { tenantId } = req.user;
+    if (!tenantId) {
+      return res.json([]);
+    }
+
+    const pipelines = db.prepare('SELECT * FROM pipelines WHERE tenant_id = ?').all(tenantId);
+    const stages = db.prepare('SELECT ps.* FROM pipeline_stages ps JOIN pipelines p ON ps.pipeline_id = p.id WHERE p.tenant_id = ? ORDER BY ps."order"').all(tenantId);
+
+    const pipelinesWithStages = pipelines.map((p: any) => ({
+      id: p.id,
+      tenantId: p.tenant_id,
+      name: p.name,
+      createdAt: p.created_at,
+      stages: stages.filter((s: any) => s.pipeline_id === p.id).map((s: any) => ({
+        id: s.id,
+        pipelineId: s.pipeline_id,
+        name: s.name,
+        order: s.order
+      }))
+    }));
+
+    res.json(pipelinesWithStages);
+  } catch (err: any) {
+    console.error('Error loading pipelines:', err);
+    res.status(500).json({ error: 'Falha ao carregar pipelines', details: err.message });
+  }
 });
 
 // Tags

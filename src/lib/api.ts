@@ -26,8 +26,20 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
       localStorage.removeItem('crm-storage');
       window.location.href = '/login';
     }
-    const error = await response.json().catch(() => ({}));
-    throw new Error(error.error || 'API Error');
+    const contentType = response.headers.get('content-type') || '';
+    let message = `API Error (${response.status})`;
+
+    if (contentType.includes('application/json')) {
+      const error = await response.json().catch(() => ({}));
+      message = error.error || error.message || message;
+    } else {
+      const text = await response.text().catch(() => '');
+      if (text) {
+        message = text;
+      }
+    }
+
+    throw new Error(message);
   }
   
   return response.json();

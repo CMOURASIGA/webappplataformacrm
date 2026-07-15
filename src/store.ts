@@ -111,6 +111,15 @@ export const useStore = create<AppState>()(
       initializeData: async () => {
         const { currentUser, activeTenantId } = get();
         if (!currentUser) return;
+
+        const safeFetch = async <T>(loader: () => Promise<T>, fallback: T) => {
+          try {
+            return await loader();
+          } catch (error) {
+            console.error('Initial data load failed:', error);
+            return fallback;
+          }
+        };
         
         try {
           if (currentUser.role === 'master') {
@@ -118,12 +127,18 @@ export const useStore = create<AppState>()(
             
             if (activeTenantId) {
               const [settings, pipelines, leads, conversations, tags, quickReplies] = await Promise.all([
-                fetchApi('/tenant/settings'),
-                fetchApi('/pipelines'),
-                fetchApi('/leads'),
-                fetchApi('/conversations'),
-                fetchApi('/tags'),
-                fetchApi('/quick-replies')
+                safeFetch(() => fetchApi('/tenant/settings'), {
+                  company_name: 'CRM Flow',
+                  logo_url: '',
+                  primary_color: '#4f46e5',
+                  sidebar_color: '#0F172A',
+                  sidebar_text_color: '#cbd5e1',
+                }),
+                safeFetch(() => fetchApi('/pipelines'), []),
+                safeFetch(() => fetchApi('/leads'), []),
+                safeFetch(() => fetchApi('/conversations'), []),
+                safeFetch(() => fetchApi('/tags'), []),
+                safeFetch(() => fetchApi('/quick-replies'), []),
               ]);
               set({ tenants, pipelines, leads, conversations, tags, quickReplies, isInitialized: true });
             } else {
@@ -131,12 +146,18 @@ export const useStore = create<AppState>()(
             }
           } else {
             const [settings, pipelines, leads, conversations, tags, quickReplies] = await Promise.all([
-              fetchApi('/tenant/settings'),
-              fetchApi('/pipelines'),
-              fetchApi('/leads'),
-              fetchApi('/conversations'),
-              fetchApi('/tags'),
-              fetchApi('/quick-replies')
+              safeFetch(() => fetchApi('/tenant/settings'), {
+                company_name: currentUser.name || 'CRM Flow',
+                logo_url: '',
+                primary_color: '#4f46e5',
+                sidebar_color: '#0F172A',
+                sidebar_text_color: '#cbd5e1',
+              }),
+              safeFetch(() => fetchApi('/pipelines'), []),
+              safeFetch(() => fetchApi('/leads'), []),
+              safeFetch(() => fetchApi('/conversations'), []),
+              safeFetch(() => fetchApi('/tags'), []),
+              safeFetch(() => fetchApi('/quick-replies'), []),
             ]);
             
             // Reconstruct tenant object for UI
