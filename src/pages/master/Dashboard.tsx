@@ -34,7 +34,7 @@ export default function MasterDashboard() {
       <div>
         <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
           <BarChart className="text-primary-600" />
-          Dashboard Master
+          Painel master
         </h1>
         <p className="text-sm text-slate-500">Visão executiva de toda a plataforma SaaS</p>
       </div>

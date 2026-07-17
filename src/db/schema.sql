@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS tenant_settings (
   primary_color TEXT DEFAULT '#4f46e5',
   sidebar_color TEXT DEFAULT '#0F172A',
   sidebar_text_color TEXT DEFAULT '#cbd5e1',
+  lead_capture_token TEXT,
   FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
 );
 
@@ -59,6 +60,10 @@ CREATE TABLE IF NOT EXISTS leads (
   email TEXT,
   company TEXT,
   source TEXT,
+  source_type TEXT DEFAULT 'manual',
+  source_campaign TEXT,
+  source_page TEXT,
+  source_captured_at DATETIME,
   status TEXT DEFAULT 'new',
   stage_id TEXT,
   pipeline_id TEXT,
@@ -95,8 +100,15 @@ CREATE TABLE IF NOT EXISTS messages (
   external_message_id TEXT,
   channel TEXT DEFAULT 'whatsapp',
   direction TEXT DEFAULT 'outbound',
+  message_type TEXT DEFAULT 'text',
   text TEXT NOT NULL,
   status TEXT DEFAULT 'sent', -- sent, delivered, read, failed
+  error_code TEXT,
+  error_message TEXT,
+  meta_status_payload TEXT,
+  sent_at DATETIME,
+  delivered_at DATETIME,
+  read_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE
 );
@@ -113,16 +125,85 @@ CREATE TABLE IF NOT EXISTS tenant_tags (
 CREATE TABLE IF NOT EXISTS whatsapp_connections (
   id TEXT PRIMARY KEY,
   tenant_id TEXT NOT NULL,
-  provider TEXT DEFAULT 'meta',
-  connection_status TEXT DEFAULT 'pending',
+  provider TEXT NOT NULL DEFAULT 'meta',
+  connection_status TEXT NOT NULL DEFAULT 'not_connected',
+  onboarding_status TEXT,
+  onboarding_step TEXT,
+  onboarding_error_code TEXT,
+  onboarding_error_message TEXT,
+  meta_business_id TEXT,
   display_phone_number TEXT,
+  verified_name TEXT,
+  code_verification_status TEXT,
+  name_status TEXT,
+  quality_rating TEXT,
+  platform_type TEXT,
   phone_number_id TEXT,
   waba_id TEXT,
+  access_token_iv TEXT,
+  access_token_auth_tag TEXT,
   access_token_encrypted TEXT,
+  token_type TEXT,
+  token_expires_at DATETIME,
+  token_last_validated_at DATETIME,
+  webhook_subscribed INTEGER NOT NULL DEFAULT 0,
+  app_subscribed_to_waba INTEGER NOT NULL DEFAULT 0,
+  phone_registered INTEGER NOT NULL DEFAULT 0,
+  onboarding_completed_at DATETIME,
+  last_sync_at DATETIME,
+  last_health_check_at DATETIME,
+  last_health_status TEXT,
+  last_inbound_message_at DATETIME,
+  last_outbound_message_at DATETIME,
+  last_status_message_at DATETIME,
+  last_error_at DATETIME,
   connected_at DATETIME,
+  disconnected_at DATETIME,
+  token_revoked_at DATETIME,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_onboarding_sessions (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  state_hash TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'created',
+  expires_at DATETIME NOT NULL,
+  used_at DATETIME,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS meta_integration_events (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT,
+  connection_id TEXT,
+  event_type TEXT NOT NULL,
+  event_status TEXT,
+  external_id TEXT,
+  error_code TEXT,
+  error_message TEXT,
+  payload_sanitized TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE SET NULL,
+  FOREIGN KEY (connection_id) REFERENCES whatsapp_connections (id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS meta_data_deletion_requests (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT,
+  connection_id TEXT,
+  confirmation_code TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'received',
+  payload_sanitized TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE SET NULL,
+  FOREIGN KEY (connection_id) REFERENCES whatsapp_connections (id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS quick_replies (
@@ -130,9 +211,26 @@ CREATE TABLE IF NOT EXISTS quick_replies (
   tenant_id TEXT NOT NULL,
   title TEXT NOT NULL,
   text TEXT NOT NULL,
+  category TEXT DEFAULT 'Geral',
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS lead_source_history (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  lead_id TEXT NOT NULL,
+  source TEXT NOT NULL,
+  source_type TEXT NOT NULL DEFAULT 'manual',
+  campaign TEXT,
+  source_page TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE CASCADE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_pipeline_stage_order
+ON pipeline_stages(pipeline_id, "order");
 
 
 CREATE TABLE IF NOT EXISTS ai_settings (
@@ -300,3 +398,26 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   ip_address TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_phone_number_unique
+ON whatsapp_connections(phone_number_id)
+WHERE phone_number_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_connections_tenant
+ON whatsapp_connections(tenant_id);
+
+CREATE INDEX IF NOT EXISTS idx_whatsapp_connections_status
+ON whatsapp_connections(connection_status);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_meta_onboarding_state_hash
+ON meta_onboarding_sessions(state_hash);
+
+CREATE INDEX IF NOT EXISTS idx_meta_onboarding_expiration
+ON meta_onboarding_sessions(expires_at);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_messages_external_id_unique
+ON messages(external_message_id)
+WHERE external_message_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_meta_data_deletion_confirmation_code
+ON meta_data_deletion_requests(confirmation_code);

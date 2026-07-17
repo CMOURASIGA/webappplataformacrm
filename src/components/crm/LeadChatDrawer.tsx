@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
 import { Send, X } from 'lucide-react';
-import { Button } from '../ui/Button';
 import { cn } from '../../lib/utils';
 import DOMPurify from 'dompurify';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+
+function textToHtml(value: string) {
+  return DOMPurify.sanitize(
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br />')
+  );
+}
 
 interface LeadChatDrawerProps {
   leadId: string | null;
@@ -31,6 +38,7 @@ export function LeadChatDrawer({ leadId, isOpen, onClose }: LeadChatDrawerProps)
   
   const activeMessages = conversation ? messages.filter(m => m.conversationId === conversation.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
   const quickReplies = useStore(state => state.quickReplies);
+  const leadInitial = lead?.name?.trim()?.charAt(0)?.toUpperCase() || '?';
 
   useEffect(() => {
     if (isOpen && leadId && currentUser) {
@@ -48,8 +56,9 @@ export function LeadChatDrawer({ leadId, isOpen, onClose }: LeadChatDrawerProps)
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (text.trim() && conversation && currentUser) {
-      addMessage(conversation.id, currentUser.id, text.trim());
+    const plainText = text.trim();
+    if (plainText && conversation && currentUser) {
+      addMessage(conversation.id, currentUser.id, textToHtml(plainText));
       setText('');
     }
   };
@@ -64,12 +73,12 @@ export function LeadChatDrawer({ leadId, isOpen, onClose }: LeadChatDrawerProps)
           <div className="flex items-center gap-3">
             <div className="relative">
               <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold">
-                {lead?.name.charAt(0)}
+                {leadInitial}
               </div>
               <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></div>
             </div>
             <div>
-              <div className="font-bold text-sm text-slate-800">{lead?.name}</div>
+              <div className="font-bold text-sm text-slate-800">{lead?.name || 'Lead'}</div>
               <div className="text-[11px] text-emerald-600 font-medium">Chat via WhatsApp</div>
             </div>
           </div>
@@ -131,19 +140,18 @@ export function LeadChatDrawer({ leadId, isOpen, onClose }: LeadChatDrawerProps)
             )}
             <div className="flex gap-2 items-end bg-white p-2 rounded-lg border border-slate-200 shadow-sm relative">
               <div className="flex-1">
-                <ReactQuill 
-                  theme="snow"
-                  value={text} 
-                  onChange={setText} 
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
                   readOnly={!conversation}
-                  modules={{ toolbar: false }}
                   placeholder="Digite uma mensagem..."
-                  className="border-none [&_.ql-container]:border-none [&_.ql-editor]:min-h-[40px] [&_.ql-editor]:max-h-[120px] [&_.ql-editor]:py-2 [&_.ql-editor]:px-2 text-sm"
+                  rows={2}
+                  className="w-full min-h-[40px] max-h-[120px] resize-y border-0 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400 disabled:opacity-60"
                 />
               </div>
               <button 
                 type="submit" 
-                disabled={!text.trim() || text === '<p><br></p>' || !conversation}
+                disabled={!text.trim() || !conversation}
                 className="p-2 mb-1 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors shrink-0"
               >
                 <Send size={18} />

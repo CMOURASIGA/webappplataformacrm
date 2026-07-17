@@ -23,7 +23,7 @@ export default function Kanban() {
 
   // For MVP, just get the first pipeline of the tenant
   const pipeline = pipelines.find(p => p.tenantId === tenantId);
-  if (!pipeline) return <div>No pipeline found.</div>;
+  if (!pipeline) return <div>Nenhum funil encontrado.</div>;
 
   const tenantLeads = leads.filter(l => l.tenantId === tenantId);
 
@@ -41,7 +41,7 @@ export default function Kanban() {
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">{pipeline.name} (Kanban)</h1>
         <div className="flex gap-4">
-          <Button onClick={() => setIsModalOpen(true)} className="h-8 text-xs"><Plus size={14} className="mr-1" /> Add Lead</Button>
+          <Button onClick={() => setIsModalOpen(true)} className="h-8 text-xs"><Plus size={14} className="mr-1" /> Adicionar lead</Button>
           <button className="text-primary-600 text-xs font-bold hover:underline">Ver Todos</button>
         </div>
       </div>

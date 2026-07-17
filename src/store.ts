@@ -46,6 +46,7 @@ interface AppState {
   deleteTag: (id: string) => Promise<void>;
   createStage: (pipelineId: string, name: string, order: number) => Promise<void>;
   deleteStage: (id: string) => Promise<void>;
+  reorderStages: (pipelineId: string, stageIds: string[]) => Promise<void>;
 
   // Leads & Pipeline
   addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
@@ -59,7 +60,7 @@ interface AppState {
   updateConversationStatus: (conversationId: string, status: any, closeReason?: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
   
-  createQuickReply: (title: string, text: string) => Promise<void>;
+  createQuickReply: (title: string, text: string, category: string) => Promise<void>;
   deleteQuickReply: (id: string) => Promise<void>;
 }
 
@@ -298,6 +299,19 @@ alert("Erro de inicialização: " + error.message);
         }
       },
 
+      reorderStages: async (pipelineId, stageIds) => {
+        await fetchApi(`/pipelines/${pipelineId}/stages/reorder`, {
+          method: 'PATCH',
+          body: JSON.stringify({ stage_ids: stageIds })
+        });
+        set(state => ({
+          pipelines: state.pipelines.map(p => p.id === pipelineId ? {
+            ...p,
+            stages: stageIds.map((id, order) => ({ ...p.stages.find(s => s.id === id)!, order }))
+          } : p)
+        }));
+      },
+
       addLead: async (lead) => {
         try {
           const newLead = await fetchApi('/leads', {
@@ -308,6 +322,7 @@ alert("Erro de inicialização: " + error.message);
               email: lead.email,
               company: lead.company,
               source: lead.source,
+              source_type: lead.sourceType || 'manual',
               stage_id: lead.stageId,
               pipeline_id: lead.pipelineId,
               tags: lead.tags || []
@@ -330,14 +345,26 @@ alert("Erro de inicialização: " + error.message);
           await get().addConversation(formattedLead.id, formattedLead.tenantId);
         } catch (error) {
           console.error("Failed to add lead:", error);
+          throw error;
         }
       },
 
       updateLead: async (id, updates) => {
-        // Implement full update if needed
-        set(state => ({
-          leads: state.leads.map(l => l.id === id ? { ...l, ...updates, updatedAt: new Date().toISOString() } : l)
-        }));
+        const saved = await fetchApi(`/leads/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: updates.name,
+            phone: updates.phone,
+            email: updates.email,
+            company: updates.company,
+            source: updates.source,
+            source_type: updates.sourceType,
+            stage_id: updates.stageId,
+            tags: updates.tags,
+            notes: updates.notes
+          })
+        });
+        set(state => ({ leads: state.leads.map(l => l.id === id ? { ...l, ...saved } : l) }));
       },
 
       moveLead: async (leadId, newStageId) => {
@@ -416,32 +443,32 @@ alert("Erro de inicialização: " + error.message);
 
       assignConversation: async (conversationId, userId) => {
         try {
-           await fetchApi(`/conversations/${conversationId}/assign`, {
+           const saved = await fetchApi(`/conversations/${conversationId}/assign`, {
               method: 'PATCH',
               body: JSON.stringify({ assigned_to: userId })
            });
            set(state => ({
-             conversations: state.conversations.map(c => c.id === conversationId ? { ...c, assignedTo: userId, status: 'in_progress' } : c)
+             conversations: state.conversations.map(c => c.id === conversationId ? { ...c, ...saved } : c)
            }));
-        } catch (e) { console.error("Failed to assign", e); }
+        } catch (e) { console.error("Failed to assign", e); throw e; }
       },
       updateConversationStatus: async (conversationId, status, closeReason) => {
         try {
-           await fetchApi(`/conversations/${conversationId}/status`, {
+           const saved = await fetchApi(`/conversations/${conversationId}/status`, {
               method: 'PATCH',
               body: JSON.stringify({ status, close_reason: closeReason })
            });
            set(state => ({
-             conversations: state.conversations.map(c => c.id === conversationId ? { ...c, status } : c)
+             conversations: state.conversations.map(c => c.id === conversationId ? { ...c, ...saved } : c)
            }));
-        } catch (e) { console.error("Failed to update status", e); }
+        } catch (e) { console.error("Failed to update status", e); throw e; }
       },
 
-      createQuickReply: async (title, text) => {
+      createQuickReply: async (title, text, category) => {
         try {
           const newReply = await fetchApi('/quick-replies', {
             method: 'POST',
-            body: JSON.stringify({ title, text })
+            body: JSON.stringify({ title, text, category })
           });
           set(state => ({ quickReplies: [newReply, ...state.quickReplies] }));
         } catch (error) {

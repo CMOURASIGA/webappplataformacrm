@@ -1,17 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
-import { Send, User as UserIcon, Plus, Sparkles, FileText, Activity } from 'lucide-react';
+import { Send, Sparkles, FileText, Activity, MessagesSquare, Search, X } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { cn } from '../../lib/utils';
+import { useSearchParams } from 'react-router-dom';
 
 import DOMPurify from 'dompurify';
-import ReactQuill from 'react-quill';
-import 'react-quill/dist/quill.snow.css';
+
+function textToHtml(value: string) {
+  return DOMPurify.sanitize(
+    value
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br />')
+  );
+}
 
 export default function Chat() {
-  const [filter, setFilter] = useState<'minhas' | 'fila' | 'todas'>('minhas');
+  const [searchParams] = useSearchParams();
+  const [filter, setFilter] = useState<'minhas' | 'fila' | 'todas' | 'abertas'>('minhas');
 
   const currentUser = useStore(state => state.currentUser);
   const activeTenantId = useStore(state => state.activeTenantId);
@@ -19,6 +29,7 @@ export default function Chat() {
   const leads = useStore(state => state.leads);
   const messages = useStore(state => state.messages);
   const pipelines = useStore(state => state.pipelines);
+  const quickReplies = useStore(state => state.quickReplies);
   
   const addMessage = useStore(state => state.addMessage);
   const assignConversation = useStore(state => state.assignConversation);
@@ -32,6 +43,10 @@ export default function Chat() {
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
   const [aiClassification, setAiClassification] = useState<any>(null);
+  const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
+  const [quickReplySearch, setQuickReplySearch] = useState('');
+  const [operationError, setOperationError] = useState('');
+  const [isAssigning, setIsAssigning] = useState(false);
 
   const handleSuggestReply = async () => {
     if (!activeConversation) return;
@@ -42,7 +57,7 @@ export default function Chat() {
         body: JSON.stringify({ conversationId: activeConversation.id }),
       });
       if (data.suggestion) {
-        setText(text + (text ? ' ' : '') + data.suggestion);
+        setText(text + (text ? '\n' : '') + data.suggestion);
       }
     } catch (err) {
       console.error(err);
@@ -88,15 +103,15 @@ export default function Chat() {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  if (!currentUser) return null;
-
-  const tenantId = currentUser.role === 'master' ? activeTenantId : currentUser.tenantId;
+  const tenantId = currentUser?.role === 'master' ? activeTenantId : currentUser?.tenantId;
+  const canViewAll = currentUser?.role === 'admin' || currentUser?.role === 'master';
 
   const tenantLeads = leads.filter(l => l.tenantId === tenantId);
   const tenantConversations = conversations.filter(c => c.tenantId === tenantId);
   const filteredConversations = tenantConversations.filter(c => {
-    if (filter === 'minhas') return c.assignedTo === currentUser?.id && c.status !== 'closed';
+    if (filter === 'minhas') return c.assignedTo === currentUser?.id;
     if (filter === 'fila') return !c.assignedTo || c.status === 'unassigned' || c.status === 'new';
+    if (filter === 'abertas') return c.status !== 'closed';
     return true;
   }).sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   
@@ -106,19 +121,37 @@ export default function Chat() {
   
   const activeMessages = activeConversation ? messages.filter(m => m.conversationId === activeConversation.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
 
-  const quickReplies = useStore(state => state.quickReplies);
-
   useEffect(() => {
-    if (activeConversation) {
+    if (activeConversation && (canViewAll || activeConversation.assignedTo === currentUser?.id)) {
       fetchMessages(activeConversation.id);
     }
-  }, [activeConversation?.id, fetchMessages]);
+  }, [activeConversation?.id, activeConversation?.assignedTo, canViewAll, currentUser?.id, fetchMessages]);
+
+  useEffect(() => {
+    const view = searchParams.get('view');
+    if (view === 'minhas' || view === 'fila' || view === 'todas' || view === 'abertas') {
+      setFilter(view);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    if (activeLeadId && !filteredConversations.some(conv => conv.leadId === activeLeadId)) {
+      setActiveLeadId(filteredConversations[0]?.leadId || null);
+      return;
+    }
+    if (!activeLeadId && filteredConversations.length > 0) {
+      setActiveLeadId(filteredConversations[0].leadId);
+    }
+  }, [activeLeadId, filteredConversations]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages]);
 
+  if (!currentUser) return null;
+
   const handleSelectLead = async (leadId: string) => {
+    setOperationError('');
     setActiveLeadId(leadId);
     const existing = tenantConversations.find(c => c.leadId === leadId);
     if (!existing && tenantId) {
@@ -126,10 +159,29 @@ export default function Chat() {
     }
   };
 
+  const handleAssign = async () => {
+    if (!activeConversation) return;
+    setIsAssigning(true);
+    setOperationError('');
+    try {
+      await assignConversation(activeConversation.id, currentUser.id);
+    } catch (err) {
+      setOperationError(err instanceof Error ? err.message : 'Não foi possível assumir a conversa.');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
+
+  const filteredQuickReplies = quickReplies.filter(reply => {
+    const query = quickReplySearch.trim().toLocaleLowerCase('pt-BR');
+    return !query || [reply.title, reply.text, reply.category].some(value => value?.toLocaleLowerCase('pt-BR').includes(query));
+  });
+
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (text.trim() && activeConversation && currentUser) {
-      addMessage(activeConversation.id, currentUser.id, text.trim());
+    const plainText = text.trim();
+    if (plainText && activeConversation && currentUser) {
+      addMessage(activeConversation.id, currentUser.id, textToHtml(plainText));
       setText('');
     }
   };
@@ -144,7 +196,7 @@ export default function Chat() {
           <div className="flex bg-slate-100 p-1 rounded-lg">
              <button onClick={() => setFilter('minhas')} className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", filter === 'minhas' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700')}>Minhas</button>
              <button onClick={() => setFilter('fila')} className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", filter === 'fila' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700')}>Fila</button>
-             <button onClick={() => setFilter('todas')} className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", filter === 'todas' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700')}>Todas</button>
+             {canViewAll && <button onClick={() => setFilter('todas')} className={cn("flex-1 text-xs py-1.5 rounded-md font-medium transition-colors", filter === 'todas' ? 'bg-white shadow text-slate-800' : 'text-slate-500 hover:text-slate-700')}>Todas</button>}
           </div>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -233,8 +285,8 @@ export default function Chat() {
                 </Button>
                 
                 {activeConversation && (!activeConversation.assignedTo || activeConversation.status === 'unassigned' || activeConversation.status === 'new') && (
-                   <Button variant="outline" size="sm" onClick={() => assignConversation(activeConversation.id, currentUser!.id)}>
-                     Assumir
+                   <Button variant="outline" size="sm" onClick={handleAssign} disabled={isAssigning}>
+                     {isAssigning ? 'Assumindo...' : 'Assumir'}
                    </Button>
                 )}
                 {activeConversation && activeConversation.status !== 'closed' && (
@@ -249,6 +301,12 @@ export default function Chat() {
                 )}
               </div>
             </div>
+
+            {operationError && (
+              <div className="mx-4 mt-3 flex items-center justify-between rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                {operationError}<button onClick={() => setOperationError('')} aria-label="Fechar aviso"><X size={16} /></button>
+              </div>
+            )}
 
             <div 
               className="flex-1 p-4 overflow-y-auto"
@@ -336,7 +394,7 @@ export default function Chat() {
 
             <div className="p-4 bg-white border-t border-slate-100">
               <form onSubmit={handleSend} className="space-y-2">
-                                  <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                <div className="flex gap-2 pb-1 relative">
                     <button
                         type="button"
                         onClick={handleSuggestReply}
@@ -345,32 +403,31 @@ export default function Chat() {
                       >
                         <Sparkles size={12} /> IA Sugerir
                       </button>
-                    {quickReplies.length > 0 && quickReplies.map(qr => (
-                      <button
-                        key={qr.id}
-                        type="button"
-                        onClick={() => setText(qr.text)}
-                        className="whitespace-nowrap text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded border border-slate-200 hover:bg-slate-200 hover:text-slate-800 transition-colors"
-                      >
-                        {qr.title}
-                      </button>
-                    ))}
+                    <button type="button" onClick={() => setQuickRepliesOpen(value => !value)} className="whitespace-nowrap text-[10px] bg-slate-100 text-slate-700 px-2 py-1 rounded border border-slate-200 hover:bg-slate-200 flex items-center gap-1 font-semibold"><MessagesSquare size={12} /> Respostas rápidas</button>
+                    {quickRepliesOpen && (
+                      <div className="absolute bottom-8 left-0 z-20 w-96 max-w-[80vw] rounded-xl border border-slate-200 bg-white p-3 shadow-xl">
+                        <div className="relative mb-2"><Search size={14} className="absolute left-2.5 top-2.5 text-slate-400" /><Input autoFocus value={quickReplySearch} onChange={event => setQuickReplySearch(event.target.value)} placeholder="Buscar por nome, conteúdo ou categoria" className="pl-8" /></div>
+                        <div className="max-h-56 space-y-1 overflow-y-auto">
+                          {filteredQuickReplies.map(reply => <button key={reply.id} type="button" onClick={() => { setText(current => `${current && current !== '<p><br></p>' ? `${current} ` : ''}${reply.text}`); setQuickRepliesOpen(false); }} className="w-full rounded-lg p-2 text-left hover:bg-slate-50"><span className="block text-xs font-bold text-slate-700">{reply.title}</span><span className="block text-[10px] text-primary-600">{reply.category || 'Geral'}</span><span className="block truncate text-xs text-slate-500">{reply.text}</span></button>)}
+                          {filteredQuickReplies.length === 0 && <p className="py-4 text-center text-xs text-slate-500">Nenhuma resposta encontrada.</p>}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 <div className="flex gap-2 items-end bg-white p-2 rounded-lg border border-slate-200 shadow-sm relative">
                   <div className="flex-1">
-                    <ReactQuill 
-                      theme="snow"
-                      value={text} 
-                      onChange={setText} 
+                    <textarea
+                      value={text}
+                      onChange={(e) => setText(e.target.value)}
                       readOnly={!activeConversation}
-                      modules={{ toolbar: false }}
                       placeholder="Digite uma mensagem..."
-                      className="border-none [&_.ql-container]:border-none [&_.ql-editor]:min-h-[40px] [&_.ql-editor]:max-h-[120px] [&_.ql-editor]:py-2 [&_.ql-editor]:px-2 text-sm"
+                      rows={2}
+                      className="w-full min-h-[40px] max-h-[120px] resize-y border-0 bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400 disabled:opacity-60"
                     />
                   </div>
                   <button 
                     type="submit" 
-                    disabled={!text.trim() || text === '<p><br></p>' || !activeConversation}
+                    disabled={!text.trim() || !activeConversation}
                     className="p-2 mb-1 bg-primary-600 text-white rounded-md hover:bg-primary-700 disabled:opacity-50 transition-colors shrink-0"
                   >
                     <Send size={18} />

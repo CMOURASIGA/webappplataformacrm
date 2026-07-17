@@ -34,15 +34,15 @@ export default function Tenants() {
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">Tenants (Clients)</h1>
+        <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">Clientes</h1>
       </div>
 
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-tight">Create New Tenant</h2>
+        <h2 className="text-sm font-bold text-slate-800 mb-4 uppercase tracking-tight">Cadastrar cliente</h2>
         <form onSubmit={handleAdd} className="space-y-4 max-w-2xl">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">Company Name</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1">Nome da empresa</label>
               <Input 
                 placeholder="Acme Corp" 
                 value={formData.name} 
@@ -51,7 +51,7 @@ export default function Tenants() {
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-500 mb-1">Company Email</label>
+              <label className="block text-xs font-bold text-slate-500 mb-1">E-mail da empresa</label>
               <Input 
                 placeholder="contact@acme.com" 
                 type="email"
@@ -62,10 +62,10 @@ export default function Tenants() {
           </div>
           
           <div className="pt-4 border-t border-slate-100">
-            <h3 className="text-xs font-bold text-slate-800 mb-3 uppercase tracking-tight">Admin User</h3>
+            <h3 className="text-xs font-bold text-slate-800 mb-3 uppercase tracking-tight">Usuário administrador</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Admin Name</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Nome do administrador</label>
                 <Input 
                   placeholder="John Doe" 
                   value={formData.admin_name} 
@@ -74,7 +74,7 @@ export default function Tenants() {
                 />
               </div>
               <div>
-                <label className="block text-xs font-bold text-slate-500 mb-1">Admin Email</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1">E-mail do administrador</label>
                 <Input 
                   placeholder="admin@acme.com" 
                   type="email"
@@ -84,9 +84,9 @@ export default function Tenants() {
                 />
               </div>
               <div className="col-span-2">
-                <label className="block text-xs font-bold text-slate-500 mb-1">Admin Password</label>
+                <label className="block text-xs font-bold text-slate-500 mb-1">Senha do administrador</label>
                 <Input 
-                  placeholder="Enter a secure password" 
+                  placeholder="Digite uma senha segura"
                   type="password"
                   value={formData.admin_password} 
                   onChange={e => setFormData({...formData, admin_password: e.target.value})} 
@@ -97,7 +97,7 @@ export default function Tenants() {
           </div>
           
           <div className="pt-2">
-            <Button type="submit">Create Tenant</Button>
+            <Button type="submit">Criar cliente</Button>
           </div>
         </form>
       </div>
@@ -106,10 +106,10 @@ export default function Tenants() {
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
-              <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Company Name</th>
+              <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Empresa</th>
               <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Status</th>
-              <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Created At</th>
-              <th className="px-6 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Actions</th>
+              <th className="px-6 py-3 text-left text-[10px] font-bold text-slate-500 uppercase tracking-wider">Criado em</th>
+              <th className="px-6 py-3 text-right text-[10px] font-bold text-slate-500 uppercase tracking-wider">Ações</th>
             </tr>
           </thead>
           <tbody className="bg-white divide-y divide-slate-100">
@@ -135,14 +135,14 @@ export default function Tenants() {
                   {new Date(tenant.createdAt).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <Button variant="ghost" size="sm">Manage</Button>
+                  <Button variant="ghost" size="sm">Gerenciar</Button>
                 </td>
               </tr>
             ))}
             {tenants.length === 0 && (
               <tr>
                 <td colSpan={4} className="px-6 py-4 text-center text-slate-500 text-sm font-medium">
-                  No tenants found.
+                  Nenhum cliente encontrado.
                 </td>
               </tr>
             )}

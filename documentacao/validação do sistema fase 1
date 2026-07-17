@@ -1,0 +1,751 @@
+Solicitação de ajustes e manutenção no CRM
+1. Objetivo
+
+Após uma validação funcional realizada no ambiente de demonstração, foram identificados alguns problemas de comportamento, pontos de usabilidade e ajustes de nomenclatura necessários antes da apresentação da plataforma para novos clientes.
+
+O objetivo desta solicitação é corrigir os problemas que impedem o uso normal do sistema e melhorar a compreensão da interface por usuários com diferentes níveis de conhecimento técnico.
+
+2. Prioridade crítica
+2.1. Tela branca ao assumir uma conversa da fila
+Módulo afetado
+
+Conversas.
+
+Relato do teste
+
+Ao acessar uma conversa que está na fila e clicar no lead para assumir ou iniciar o atendimento, o sistema apresenta uma tela branca.
+
+Depois disso, é necessário atualizar a página. Após o refresh, as informações da tela desaparecem ou a conversa deixa de ser exibida.
+
+Comportamento atual
+O usuário abre a tela de conversas.
+Seleciona uma conversa disponível na fila.
+Tenta assumir ou abrir a conversa.
+A aplicação apresenta tela branca.
+O usuário precisa atualizar a página.
+Após a atualização, a conversa ou os dados deixam de aparecer corretamente.
+Comportamento esperado
+
+Ao clicar em uma conversa da fila:
+
+A conversa deve ser atribuída ao usuário autenticado.
+O status deve ser atualizado para atendimento.
+O painel de mensagens deve ser aberto.
+O histórico da conversa deve permanecer disponível.
+Nenhuma informação deve desaparecer após atualizar a página.
+Orientação técnica
+
+Revisar principalmente:
+
+src/pages/chat/Chat.tsx
+src/components/crm/LeadChatDrawer.tsx
+src/store.ts
+server.ts
+
+Verificar:
+
+erro não tratado durante a seleção da conversa;
+retorno nulo ou indefinido após a atribuição;
+atualização incorreta do estado local;
+conversa removida da lista antes de ser adicionada ao filtro Minhas;
+inconsistência entre assignedTo, status e usuário autenticado;
+falha na resposta da API de atribuição;
+navegação ou renderização executada com objeto de conversa inexistente;
+persistência da atribuição no banco de dados.
+
+Também deve ser adicionada proteção para impedir que um erro de uma conversa derrube toda a tela.
+
+Critérios de aceite
+O usuário consegue assumir uma conversa da fila.
+A conversa aparece imediatamente em Minhas.
+O painel de mensagens é aberto sem tela branca.
+O histórico continua disponível após atualizar o navegador.
+A conversa não desaparece da fila sem aparecer para o usuário responsável.
+Em caso de erro da API, o sistema apresenta uma mensagem clara e mantém a tela funcional.
+Prioridade
+
+P0, bloqueador.
+
+2.2. Conversas desaparecendo
+Módulo afetado
+
+Conversas e gerenciamento de leads.
+
+Relato do teste
+
+Durante a validação, uma conversa deixou de aparecer. Segundo o relato, essa situação já havia ocorrido anteriormente.
+
+O lead continuou cadastrado, mas não era possível abrir uma conversa com ele.
+
+Comportamento atual
+
+O lead permanece na lista de leads, porém:
+
+não aparece corretamente nas conversas;
+não pode ser selecionado para atendimento;
+não é possível iniciar ou continuar uma conversa;
+após refresh, informações podem desaparecer.
+Comportamento esperado
+
+Um lead não deve desaparecer do módulo de conversas sem uma ação explícita de:
+
+encerramento;
+arquivamento;
+exclusão;
+transferência;
+alteração de status.
+
+Mesmo uma conversa encerrada deve permanecer consultável no histórico.
+
+Orientação técnica
+
+Verificar:
+
+filtros aplicados à listagem;
+diferença entre conversa inexistente e conversa encerrada;
+persistência no banco;
+atualização do store após atribuição;
+remoção prematura do item da lista;
+tratamento do status new, unassigned, open, assigned e closed;
+vínculo entre lead e conversa;
+comportamento após reload.
+
+O sistema deve preservar o histórico e diferenciar claramente:
+
+Lead cadastrado sem conversa
+Conversa aguardando atendimento
+Conversa em atendimento
+Conversa encerrada
+Conversa arquivada
+Critérios de aceite
+Conversas não desaparecem sem mudança registrada de status.
+Toda mudança de fila ou responsável é persistida.
+Após refresh, o estado continua igual ao estado salvo.
+Leads sem conversa podem iniciar uma nova conversa quando o canal permitir.
+Conversas encerradas podem ser consultadas no histórico.
+Prioridade
+
+P0, bloqueador.
+
+3. Prioridade alta
+3.1. Permissão da opção Todas nas conversas
+Módulo afetado
+
+Conversas.
+
+Relato do teste
+
+No painel de usuário comum são exibidos os filtros:
+
+Minhas;
+Da fila;
+Todas.
+
+A percepção é que um usuário comum não deve visualizar todas as conversas da organização.
+
+Regra proposta
+Usuário atendente
+
+Deve visualizar apenas:
+
+Minhas
+Da fila
+Administrador do cliente
+
+Pode visualizar:
+
+Minhas
+Da fila
+Todas
+Master da plataforma
+
+Pode visualizar todas as conversas do cliente selecionado, respeitando o isolamento entre clientes.
+
+Comportamento esperado
+
+A opção Todas deve ser controlada por permissão e não apenas escondida visualmente.
+
+O backend também deve impedir que um usuário comum consulte conversas de outros atendentes, mesmo que tente acessar diretamente a API.
+
+Orientação técnica
+
+O filtro está implementado em:
+
+src/pages/chat/Chat.tsx
+
+Também existem referências nos scripts:
+
+patch_chat.js
+patch_chat2.js
+
+Revisar a lógica que atualmente trabalha com:
+
+'minhas' | 'fila' | 'todas'
+
+A autorização deve ser aplicada também no endpoint responsável pela listagem de conversas.
+
+Exemplo de regra:
+
+if (currentUser.role === 'agent') {
+  permitir apenas conversas atribuídas ao usuário
+  ou conversas disponíveis na fila
+}
+
+if (currentUser.role === 'admin' || currentUser.role === 'master') {
+  permitir filtro "todas"
+}
+Critérios de aceite
+Atendente não visualiza a opção Todas.
+Atendente não consegue consultar conversas de outros usuários pela API.
+Administrador consegue visualizar todas as conversas do próprio cliente.
+Master consegue visualizar as conversas do cliente selecionado.
+Nenhum perfil acessa dados de outro cliente indevidamente.
+Prioridade
+
+P1, alta.
+
+3.2. Edição de leads não funciona
+Módulo afetado
+
+Lista de leads.
+
+Relato do teste
+
+O botão ou ação Editar aparece na interface, mas não executa a edição do lead.
+
+Comportamento atual
+
+O usuário clica em Editar, mas:
+
+o formulário não abre;
+ou os dados não são carregados;
+ou a alteração não é salva.
+Comportamento esperado
+
+Ao clicar em Editar:
+
+Abrir o formulário com os dados atuais.
+Permitir a alteração dos campos autorizados.
+Validar os dados.
+Salvar no backend.
+Atualizar a lista sem necessidade de refresh.
+Exibir confirmação de sucesso.
+Orientação técnica
+
+Revisar:
+
+src/pages/crm/LeadsList.tsx
+src/components/crm/AddLeadModal.tsx
+src/store.ts
+server.ts
+
+Avaliar se o mesmo modal de criação está sendo reutilizado para edição sem receber corretamente o lead selecionado.
+
+Considerar separar os estados:
+
+mode: 'create' | 'edit'
+selectedLead
+Critérios de aceite
+O formulário abre preenchido.
+As alterações são persistidas.
+A lista é atualizada imediatamente.
+Após refresh, os novos dados permanecem.
+Erros de validação são apresentados ao usuário.
+O usuário não consegue editar leads de outro cliente.
+Prioridade
+
+P1, alta.
+
+3.3. Ordenação dos estágios do funil por arrastar e soltar
+Módulo afetado
+
+Configuração do funil.
+
+Relato do teste
+
+É possível criar estágios, mas não é possível reorganizá-los.
+
+Caso um estágio seja criado depois, ele fica no final da lista e não pode ser movido para o meio do processo.
+
+Comportamento esperado
+
+O administrador deve conseguir:
+
+arrastar e soltar estágios;
+alterar a ordem do funil;
+salvar a nova sequência;
+visualizar imediatamente a ordem atualizada no funil de leads.
+Orientação técnica
+
+Revisar:
+
+src/pages/crm/KanbanConfig.tsx
+src/pages/crm/Kanban.tsx
+src/store.ts
+server.ts
+
+Criar ou utilizar um campo de ordenação:
+
+position
+sort_order
+display_order
+
+A alteração deve ser persistida no banco e não apenas no estado do navegador.
+
+O backend pode receber uma lista semelhante a:
+
+[
+  {
+    "stageId": "stage-1",
+    "position": 1
+  },
+  {
+    "stageId": "stage-3",
+    "position": 2
+  },
+  {
+    "stageId": "stage-2",
+    "position": 3
+  }
+]
+Regras adicionais
+impedir posições duplicadas;
+recalcular a sequência após remoção;
+atualizar todos os usuários após a alteração;
+manter os leads vinculados aos estágios;
+não alterar o estágio dos leads durante a reordenação.
+Critérios de aceite
+É possível mover qualquer estágio.
+A ordem fica salva após refresh.
+O funil principal respeita a mesma ordem.
+Leads não são perdidos nem movidos de estágio.
+A alteração funciona em desktop e dispositivos móveis.
+Prioridade
+
+P1, alta.
+
+4. Prioridade média
+4.1. Melhorar o funcionamento das respostas rápidas
+Módulo afetado
+
+Respostas rápidas e conversas.
+
+Relato do teste
+
+A funcionalidade permite criar modelos de mensagens, mas não está claro como utilizar esses modelos durante uma conversa.
+
+Também não está claro se as categorias, como saudação ou encerramento, alteram o comportamento do sistema.
+
+Problema atual
+
+A plataforma permite cadastrar uma resposta rápida, porém o usuário não entende:
+
+onde encontrá-la durante o atendimento;
+como inseri-la na conversa;
+se existe um comando ou atalho;
+para que serve a categoria;
+se a mensagem é enviada automaticamente ou manualmente.
+Comportamento proposto
+
+Na caixa de mensagem da conversa, disponibilizar:
+
+Botão Respostas rápidas.
+Campo de pesquisa.
+Lista de modelos disponíveis.
+Filtro por categoria.
+Ação para inserir o texto no campo de mensagem.
+Possibilidade de editar antes de enviar.
+Opcionalmente, suporte ao comando /.
+
+Exemplo:
+
+/boasvindas
+/horario
+/documentos
+/encerramento
+Categorias sugeridas
+Saudação
+Informação
+Documentos
+Cobrança
+Acompanhamento
+Encerramento
+Outros
+
+A categoria deve servir inicialmente para organização e filtro. Ela não deve disparar mensagens automaticamente sem uma configuração explícita.
+
+Orientação técnica
+
+Revisar:
+
+src/pages/chat/QuickReplies.tsx
+src/pages/chat/Chat.tsx
+src/components/crm/LeadChatDrawer.tsx
+Critérios de aceite
+A resposta rápida pode ser localizada durante a conversa.
+O usuário consegue pesquisar pelo nome ou conteúdo.
+O texto é inserido no campo de mensagem.
+O usuário pode editar antes de enviar.
+A categoria é exibida e pode ser usada como filtro.
+O cadastro explica claramente como o modelo será utilizado.
+Prioridade
+
+P2, média.
+
+4.2. Ajustar o campo Operar como
+Módulo afetado
+
+Cabeçalho e contexto de acesso.
+
+Relato do teste
+
+No painel de usuário aparece a expressão Operar como. A sugestão é exibir claramente qual usuário está autenticado.
+
+Análise
+
+No sistema atual, Operar como aparentemente está relacionado à seleção de cliente pelo perfil master.
+
+Para usuários comuns, essa expressão pode gerar confusão.
+
+Comportamento proposto
+Usuário comum
+
+Exibir:
+
+Usuário: Nome do usuário
+
+ou:
+
+Conectado como: Nome do usuário
+Master
+
+Manter uma área separada para seleção do cliente:
+
+Cliente ativo: Nome do cliente
+
+Não misturar a identidade do usuário com o cliente selecionado.
+
+Orientação técnica
+
+Revisar:
+
+src/components/layout/AppLayout.tsx
+
+Há uma referência atual próxima à área:
+
+Operar como:
+Critérios de aceite
+Usuário comum visualiza o próprio nome.
+Master visualiza o próprio usuário e o cliente selecionado separadamente.
+A troca de cliente permanece disponível somente para quem possui permissão.
+O contexto selecionado não é confundido com o usuário autenticado.
+Prioridade
+
+P2, média.
+
+4.3. Retirar ou definir a busca global
+Módulo afetado
+
+Cabeçalho.
+
+Relato do teste
+
+O campo Buscar não possui finalidade clara, já que as ferramentas estão listadas no menu lateral.
+
+Decisão proposta
+
+Para esta primeira versão, remover o campo de busca caso ele não tenha uma função implementada.
+
+Não manter um elemento visual sem funcionamento.
+
+Possível evolução futura
+
+A busca poderá ser retomada quando puder pesquisar:
+
+leads;
+conversas;
+mensagens;
+empresas;
+contatos;
+artigos da central de ajuda;
+configurações.
+Critérios de aceite
+Se não houver funcionalidade real, o campo não será exibido.
+Caso permaneça, deverá retornar resultados válidos.
+Nenhum campo visual deve simular uma funcionalidade inexistente.
+Prioridade
+
+P2, média.
+
+5. Ajustes de nomenclatura e idioma
+5.1. Padronização em português
+
+O sistema será utilizado por pessoas que podem não possuir familiaridade com termos técnicos em inglês.
+
+Dar preferência a palavras em português sempre que houver uma tradução clara.
+
+Alterações sugeridas
+Nome atual	Nome sugerido
+Dashboard	Painel inicial
+Dashboard Master	Painel master
+Kanban	Funil
+Kanban de Leads	Funil de leads
+Configuração Kanban	Configuração do funil
+Tenants	Clientes
+Tenants, Clientes	Clientes
+CRM / Kanban	CRM / Funil
+White Label	Manter White Label
+Quick Replies	Respostas rápidas
+AI Settings	Configuração da IA
+Knowledge Base	Base de conhecimento
+WhatsApp Settings	Configuração do WhatsApp
+Observação
+
+White Label pode ser mantido porque representa um conceito comercial específico. Porém, a tela deve ter uma breve explicação:
+
+Personalize logotipo, cores, nome e identidade visual da plataforma para cada cliente.
+Orientação técnica
+
+As nomenclaturas principais estão concentradas em:
+
+src/components/layout/AppLayout.tsx
+src/App.tsx
+src/pages/master/Tenants.tsx
+src/pages/master/Dashboard.tsx
+src/pages/crm/Kanban.tsx
+src/pages/crm/KanbanConfig.tsx
+Critérios de aceite
+Menu lateral padronizado em português.
+Títulos das páginas compatíveis com os nomes do menu.
+Botões e mensagens de erro também em português.
+Não deve haver mistura desnecessária entre português e inglês.
+Prioridade
+
+P2, média.
+
+6. Integrações e origem dos leads
+6.1. Diferenciar cadastro da origem real do lead
+Módulo afetado
+
+Leads e integrações.
+
+Relato do teste
+
+O cadastro permite informar diferentes origens:
+
+manual;
+WhatsApp;
+site;
+formulário;
+Instagram;
+telefone.
+
+Entretanto, não existe uma área clara de integração para receber leads automaticamente dessas fontes.
+
+Análise
+
+Ter um campo chamado origem não significa que a plataforma já esteja integrada ao canal.
+
+É necessário diferenciar:
+
+Origem informada manualmente
+Origem capturada automaticamente por integração
+Correção imediata
+
+Manter as origens existentes, mas indicar no cadastro quando a origem foi definida manualmente.
+
+Também deve ser possível cadastrar um lead recebido por telefone.
+
+Evoluções recomendadas
+Integração com formulário do site
+
+Criar:
+
+POST /api/public/leads
+
+ou webhook equivalente.
+
+O endpoint deverá:
+
+identificar o cliente;
+validar uma chave ou token;
+criar ou atualizar o lead;
+registrar a origem como site ou formulário;
+impedir duplicidades;
+registrar data, campanha e página de origem;
+opcionalmente criar uma atividade para atendimento.
+Integração com Instagram
+
+Planejar a integração com:
+
+mensagens do Instagram Direct;
+comentários, quando aplicável;
+leads de anúncios da Meta;
+formulários instantâneos da Meta.
+
+Essa integração depende das permissões e produtos disponibilizados pela Meta.
+
+Telefone
+
+O lead recebido por ligação poderá ser cadastrado manualmente na primeira versão.
+
+Como evolução, pode existir integração com telefonia ou PABX, mas isso não deve ser considerado parte do escopo inicial.
+
+Critérios de aceite da etapa atual
+Usuário consegue cadastrar lead manualmente.
+A origem é armazenada.
+O sistema identifica quando a origem foi manual.
+A lista de origens não afirma que uma integração já está ativa.
+A interface pode indicar quais canais estão conectados.
+Prioridade
+
+P2 para clarificação da origem.
+
+P3 para novas integrações.
+
+7. Base de ajuda
+7.1. Criar estrutura futura para central de ajuda
+
+Foi mencionado que, mesmo sendo uma plataforma simples, será necessário explicar cada ferramenta.
+
+Proposta
+
+Criar futuramente uma central de ajuda com:
+
+visão geral;
+painel inicial;
+conversas;
+fila de atendimento;
+leads;
+funil;
+respostas rápidas;
+WhatsApp;
+inteligência artificial;
+usuários e permissões;
+personalização White Label.
+
+Esta ação não deve bloquear a correção dos problemas atuais.
+
+Primeira entrega possível
+
+Adicionar ícones de ajuda nas telas, com textos curtos explicando:
+
+O que é
+Para que serve
+Como utilizar
+Quem pode acessar
+Prioridade
+
+P3, evolução.
+
+8. Matriz consolidada de prioridade
+ID	Ajuste	Tipo	Prioridade
+01	Tela branca ao assumir conversa	Correção	P0
+02	Conversas desaparecendo	Correção	P0
+03	Restringir filtro Todas por perfil	Segurança e permissão	P1
+04	Corrigir edição de leads	Correção	P1
+05	Ordenar estágios do funil	Funcionalidade necessária	P1
+06	Integrar respostas rápidas ao chat	Usabilidade	P2
+07	Ajustar Operar como	Usabilidade	P2
+08	Remover ou implementar busca	Usabilidade	P2
+09	Padronizar nomenclaturas em português	Interface	P2
+10	Clarificar origem manual e automática	Regra funcional	P2
+11	Integração com formulário de site	Evolução	P3
+12	Integração com Instagram e Meta Leads	Evolução	P3
+13	Criar central de ajuda	Evolução	P3
+9. Ordem recomendada de desenvolvimento
+Etapa 1. Estabilização
+
+Executar primeiro:
+
+tela branca nas conversas;
+desaparecimento das conversas;
+persistência da atribuição;
+edição de leads;
+controle de acesso ao filtro Todas.
+
+A plataforma não deve ser apresentada para cliente antes de esses pontos estarem resolvidos.
+
+Etapa 2. Operação
+
+Depois:
+
+drag and drop dos estágios;
+utilização das respostas rápidas;
+ajustes no cabeçalho;
+remoção ou funcionamento da busca;
+revisão das nomenclaturas.
+Etapa 3. Canais e documentação
+
+Por último:
+
+formulário do site;
+Instagram e Meta Leads;
+central de ajuda;
+expansão das origens;
+integrações adicionais.
+10. Testes obrigatórios antes da entrega
+Cenário 1. Usuário assume conversa
+Entrar como atendente.
+Abrir Da fila.
+Selecionar uma conversa.
+Assumir o atendimento.
+Enviar uma mensagem.
+Atualizar o navegador.
+Resultado esperado
+
+A conversa aparece em Minhas e permanece disponível depois do refresh.
+
+Cenário 2. Permissão do atendente
+Entrar como atendente.
+Abrir Conversas.
+Verificar os filtros.
+Resultado esperado
+
+O usuário visualiza somente:
+
+Minhas
+Da fila
+Cenário 3. Permissão do administrador
+Entrar como administrador do cliente.
+Abrir Conversas.
+Selecionar Todas.
+Resultado esperado
+
+O administrador visualiza as conversas do próprio cliente, sem acessar outro cliente.
+
+Cenário 4. Editar lead
+Abrir a lista de leads.
+Selecionar Editar.
+Alterar nome ou informação de contato.
+Salvar.
+Atualizar a página.
+Resultado esperado
+
+Os dados permanecem atualizados.
+
+Cenário 5. Reorganizar funil
+Criar três estágios.
+Mover o terceiro para a primeira posição.
+Atualizar a página.
+Abrir o funil.
+Resultado esperado
+
+A nova ordem permanece salva e os leads continuam nos mesmos estágios.
+
+Cenário 6. Resposta rápida
+Criar uma resposta rápida.
+Abrir uma conversa.
+Pesquisar o modelo.
+Inserir a mensagem.
+Editar o texto.
+Enviar.
+Resultado esperado
+
+A resposta é inserida e enviada corretamente.
+
+11. Observação final ao dev
+
+A validação geral da plataforma foi positiva quanto à aparência, simplicidade e proposta do produto. Porém, os problemas de conversa, atribuição e edição de leads afetam o fluxo central da operação e devem ser tratados como correções prioritárias.
+
+As integrações com site, Instagram e outros canais devem ser documentadas como evolução de produto e não como defeito da versão atual. O campo de origem do lead deve continuar existindo, mas a interface precisa deixar claro quais origens são apenas informadas manualmente e quais possuem integração ativa.

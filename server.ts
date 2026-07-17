@@ -6,18 +6,27 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import fs from 'fs';
+import crypto from 'crypto';
+import dotenv from 'dotenv';
 
-import 'dotenv/config';
+// Prefer .env.local for local development, then fall back to .env.
+dotenv.config({ path: '.env.local' });
+dotenv.config({ path: '.env' });
 
 const app = express();
-const PORT = 3000;
+const PORT = Number(process.env.PORT || 3001);
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
   throw new Error('JWT_SECRET environment variable is required');
 }
 
 app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({
+  limit: '50mb',
+  verify: (req: any, _res, buf) => {
+    req.rawBody = buf;
+  },
+}));
 
 app.use('/api', async (_req, _res, next) => {
   try {
@@ -39,6 +48,43 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'SaaS CRM Backend is running' });
 });
 
+app.post('/api/public/leads', async (req: any, res: any) => {
+  const captureToken = req.headers['x-capture-token'] || req.body.token;
+  const { name, phone, email, company, source = 'site', campaign, page } = req.body;
+  if (!captureToken) return res.status(401).json({ error: 'Token de captura não informado' });
+  if (!name?.trim() || (!phone?.trim() && !email?.trim())) {
+    return res.status(400).json({ error: 'Nome e telefone ou e-mail são obrigatórios' });
+  }
+
+  const settings = db.prepare('SELECT tenant_id FROM tenant_settings WHERE lead_capture_token = ?').get(captureToken) as any;
+  if (!settings) return res.status(401).json({ error: 'Token de captura inválido' });
+  const tenantId = settings.tenant_id;
+  const normalizedSource = String(source).toLowerCase() === 'formulario' ? 'formulario' : 'site';
+  let lead = phone?.trim()
+    ? db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND phone = ?').get(tenantId, phone.trim()) as any
+    : null;
+  if (!lead && email?.trim()) {
+    lead = db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND lower(email) = lower(?)').get(tenantId, email.trim()) as any;
+  }
+
+  const leadId = lead?.id || crypto.randomUUID();
+  if (lead) {
+    db.prepare(`UPDATE leads SET name = ?, phone = COALESCE(?, phone), email = COALESCE(?, email), company = COALESCE(?, company), source = ?, source_type = 'automatic', source_campaign = ?, source_page = ?, source_captured_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?`)
+      .run(name.trim(), phone?.trim() || null, email?.trim() || null, company || null, normalizedSource, campaign || null, page || null, leadId, tenantId);
+  } else {
+    const pipeline = db.prepare('SELECT id FROM pipelines WHERE tenant_id = ? ORDER BY created_at LIMIT 1').get(tenantId) as any;
+    const stage = pipeline ? db.prepare('SELECT id FROM pipeline_stages WHERE pipeline_id = ? ORDER BY "order" LIMIT 1').get(pipeline.id) as any : null;
+    if (!pipeline || !stage) return res.status(409).json({ error: 'O cliente não possui funil configurado' });
+    db.prepare(`INSERT INTO leads (id, tenant_id, name, phone, email, company, source, source_type, source_campaign, source_page, source_captured_at, stage_id, pipeline_id, tags) VALUES (?, ?, ?, ?, ?, ?, ?, 'automatic', ?, ?, CURRENT_TIMESTAMP, ?, ?, '[]')`)
+      .run(leadId, tenantId, name.trim(), phone?.trim() || '', email?.trim() || null, company || null, normalizedSource, campaign || null, page || null, stage.id, pipeline.id);
+    db.prepare("INSERT INTO conversations (id, tenant_id, lead_id, status) VALUES (?, ?, ?, 'unassigned')").run(crypto.randomUUID(), tenantId, leadId);
+  }
+  db.prepare('INSERT INTO lead_source_history (id, tenant_id, lead_id, source, source_type, campaign, source_page) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .run(crypto.randomUUID(), tenantId, leadId, normalizedSource, 'automatic', campaign || null, page || null);
+  await commitDbChanges();
+  res.status(lead ? 200 : 201).json({ id: leadId, created: !lead });
+});
+
 // Middleware to protect routes
 const authenticate = (req: any, res: any, next: any) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -53,10 +99,12 @@ const authenticate = (req: any, res: any, next: any) => {
       return res.status(401).json({ error: 'User no longer exists' });
     }
     
-    req.user = decoded;
+    req.user = { id: user.id, role: user.role, tenantId: user.tenant_id };
     
     // Master impersonation logic: if master provides a tenant ID header, use it
     if (req.user.role === 'master' && req.headers['x-tenant-id']) {
+      const selectedTenant = db.prepare('SELECT id FROM tenants WHERE id = ?').get(req.headers['x-tenant-id']);
+      if (!selectedTenant) return res.status(403).json({ error: 'Cliente ativo inválido' });
       req.user.tenantId = req.headers['x-tenant-id'];
     }
     
@@ -330,7 +378,7 @@ app.post('/api/admin/tenants', authenticate, async (req: any, res: any) => {
     
     db.prepare('BEGIN').run();
     db.prepare('INSERT INTO tenants (id, name, email) VALUES (?, ?, ?)').run(tenantId, name, email);
-    db.prepare('INSERT INTO tenant_settings (tenant_id, company_name) VALUES (?, ?)').run(tenantId, company_name || name);
+    db.prepare('INSERT INTO tenant_settings (tenant_id, company_name, lead_capture_token) VALUES (?, ?, lower(hex(randomblob(24))))').run(tenantId, company_name || name);
     db.prepare('INSERT INTO users (id, tenant_id, name, email, password_hash, role) VALUES (?, ?, ?, ?, ?, ?)').run(userId, tenantId, admin_name, admin_email, hash, 'admin');
     
     // Create default pipeline and stages
@@ -373,8 +421,8 @@ app.get('/api/tenant/settings', authenticate, async (req: any, res: any) => {
 
   if (!settings) {
     db.prepare(`
-      INSERT INTO tenant_settings (tenant_id, company_name, primary_color, logo_url, sidebar_color, sidebar_text_color)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO tenant_settings (tenant_id, company_name, primary_color, logo_url, sidebar_color, sidebar_text_color, lead_capture_token)
+      VALUES (?, ?, ?, ?, ?, ?, lower(hex(randomblob(24))))
     `).run(
       tenantId,
       tenant.name,
@@ -405,8 +453,8 @@ app.patch('/api/tenant/settings', authenticate, async (req: any, res: any) => {
     );
 
     db.prepare(`
-      INSERT INTO tenant_settings (tenant_id, company_name, primary_color, logo_url, sidebar_color, sidebar_text_color)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO tenant_settings (tenant_id, company_name, primary_color, logo_url, sidebar_color, sidebar_text_color, lead_capture_token)
+      VALUES (?, ?, ?, ?, ?, ?, lower(hex(randomblob(24))))
       ON CONFLICT(tenant_id) DO UPDATE SET
         company_name = excluded.company_name,
         primary_color = excluded.primary_color,
@@ -513,6 +561,7 @@ app.get('/api/quick-replies', authenticate, (req: any, res: any) => {
     tenantId: r.tenant_id,
     title: r.title,
     text: r.text,
+    category: r.category || 'Geral',
     createdAt: r.created_at
   })));
 });
@@ -520,10 +569,11 @@ app.get('/api/quick-replies', authenticate, (req: any, res: any) => {
 app.post('/api/quick-replies', authenticate, async (req: any, res: any) => {
   const { tenantId, role } = req.user;
   
-  const { title, text } = req.body;
+  const { title, text, category = 'Geral' } = req.body;
+  if (!title?.trim() || !text?.trim()) return res.status(400).json({ error: 'Título e mensagem são obrigatórios' });
   const id = Math.random().toString(36).substring(2, 9);
   
-  db.prepare('INSERT INTO quick_replies (id, tenant_id, title, text) VALUES (?, ?, ?, ?)').run(id, tenantId, title, text);
+  db.prepare('INSERT INTO quick_replies (id, tenant_id, title, text, category) VALUES (?, ?, ?, ?, ?)').run(id, tenantId, title.trim(), text.trim(), category.trim() || 'Geral');
   
   const newReply = db.prepare('SELECT * FROM quick_replies WHERE id = ?').get(id) as any;
   await commitDbChanges();
@@ -532,6 +582,7 @@ app.post('/api/quick-replies', authenticate, async (req: any, res: any) => {
     tenantId: newReply.tenant_id,
     title: newReply.title,
     text: newReply.text,
+    category: newReply.category || 'Geral',
     createdAt: newReply.created_at
   });
 });
@@ -587,7 +638,15 @@ app.get('/api/leads', authenticate, (req: any, res: any) => {
     leads = db.prepare('SELECT * FROM leads WHERE tenant_id = ? ORDER BY created_at DESC').all(tenantId);
   } else {
     // User can only see leads assigned to them or where they are the owner
-    leads = db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND (assigned_to = ? OR owner_user_id = ?) ORDER BY created_at DESC').all(tenantId, userId, userId);
+    leads = db.prepare(`
+      SELECT DISTINCT l.* FROM leads l
+      LEFT JOIN conversations c ON c.lead_id = l.id AND c.tenant_id = l.tenant_id
+      WHERE l.tenant_id = ? AND (
+        l.assigned_to = ? OR l.owner_user_id = ? OR c.assigned_to = ? OR
+        c.assigned_to IS NULL OR c.status IN ('new', 'unassigned')
+      )
+      ORDER BY l.created_at DESC
+    `).all(tenantId, userId, userId, userId);
   }
   
   res.json(leads.map((l: any) => ({
@@ -595,6 +654,10 @@ app.get('/api/leads', authenticate, (req: any, res: any) => {
     tenantId: l.tenant_id,
     stageId: l.stage_id,
     pipelineId: l.pipeline_id,
+    sourceType: l.source_type,
+    sourceCampaign: l.source_campaign,
+    sourcePage: l.source_page,
+    sourceCapturedAt: l.source_captured_at,
     createdAt: l.created_at,
     updatedAt: l.updated_at,
     tags: JSON.parse(l.tags || '[]')
@@ -603,13 +666,16 @@ app.get('/api/leads', authenticate, (req: any, res: any) => {
 
 app.post('/api/leads', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
-  const { name, phone, email, company, source, stage_id, pipeline_id, tags = [] } = req.body;
+  const { name, phone, email, company, source, source_type = 'manual', stage_id, pipeline_id, tags = [] } = req.body;
+  if (!name?.trim() || !phone?.trim()) return res.status(400).json({ error: 'Nome e telefone são obrigatórios' });
   
   const id = Math.random().toString(36).substring(2, 9);
   db.prepare(`
-    INSERT INTO leads (id, tenant_id, name, phone, email, company, source, stage_id, pipeline_id, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, tenantId, name, phone, email, company, source, stage_id, pipeline_id, JSON.stringify(tags));
+    INSERT INTO leads (id, tenant_id, name, phone, email, company, source, source_type, stage_id, pipeline_id, tags)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, tenantId, name.trim(), phone.trim(), email || null, company || null, source || 'Manual', source_type, stage_id, pipeline_id, JSON.stringify(tags));
+  db.prepare('INSERT INTO lead_source_history (id, tenant_id, lead_id, source, source_type) VALUES (?, ?, ?, ?, ?)')
+    .run(crypto.randomUUID(), tenantId, id, source || 'Manual', source_type);
   
   const newLead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
   await commitDbChanges();
@@ -618,6 +684,7 @@ app.post('/api/leads', authenticate, async (req: any, res: any) => {
     tenantId: newLead.tenant_id,
     stageId: newLead.stage_id,
     pipelineId: newLead.pipeline_id,
+    sourceType: newLead.source_type,
     createdAt: newLead.created_at,
     updatedAt: newLead.updated_at,
     tags: JSON.parse(newLead.tags || '[]')
@@ -627,7 +694,7 @@ app.post('/api/leads', authenticate, async (req: any, res: any) => {
 app.patch('/api/leads/:id', authenticate, async (req: any, res: any) => {
   const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
-  const { stage_id, tags } = req.body;
+  const { name, phone, email, company, source, source_type, stage_id, tags, notes } = req.body;
   
   // Verify permissions
   let lead;
@@ -639,14 +706,46 @@ app.patch('/api/leads/:id', authenticate, async (req: any, res: any) => {
   
   if (!lead) return res.status(404).json({ error: 'Not found or unauthorized' });
   
+  if (name !== undefined && !String(name).trim()) return res.status(400).json({ error: 'Nome é obrigatório' });
+  if (phone !== undefined && !String(phone).trim()) return res.status(400).json({ error: 'Telefone é obrigatório' });
   if (stage_id) {
+    const validStage = db.prepare('SELECT ps.id FROM pipeline_stages ps JOIN pipelines p ON p.id = ps.pipeline_id WHERE ps.id = ? AND p.tenant_id = ?').get(stage_id, tenantId);
+    if (!validStage) return res.status(400).json({ error: 'Etapa inválida' });
     db.prepare('UPDATE leads SET stage_id = ? WHERE id = ? AND tenant_id = ?').run(stage_id, id, tenantId);
   }
-  if (tags) {
+  if (tags !== undefined) {
     db.prepare('UPDATE leads SET tags = ? WHERE id = ? AND tenant_id = ?').run(JSON.stringify(tags), id, tenantId);
   }
+  const fields: Array<[string, unknown]> = [['name', name], ['phone', phone], ['email', email], ['company', company], ['notes', notes]];
+  for (const [field, value] of fields) {
+    if (value !== undefined) db.prepare(`UPDATE leads SET ${field} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?`).run(value || null, id, tenantId);
+  }
+  if (source !== undefined) {
+    const sourceType = source_type === 'automatic' ? 'automatic' : 'manual';
+    db.prepare('UPDATE leads SET source = ?, source_type = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?').run(source, sourceType, id, tenantId);
+    db.prepare('INSERT INTO lead_source_history (id, tenant_id, lead_id, source, source_type) VALUES (?, ?, ?, ?, ?)').run(crypto.randomUUID(), tenantId, id, source, sourceType);
+  }
   await commitDbChanges();
-  res.json({ success: true });
+  const saved = db.prepare('SELECT * FROM leads WHERE id = ? AND tenant_id = ?').get(id, tenantId) as any;
+  res.json({ ...saved, tenantId: saved.tenant_id, stageId: saved.stage_id, pipelineId: saved.pipeline_id, sourceType: saved.source_type, sourceCampaign: saved.source_campaign, sourcePage: saved.source_page, sourceCapturedAt: saved.source_captured_at, createdAt: saved.created_at, updatedAt: saved.updated_at, tags: JSON.parse(saved.tags || '[]') });
+});
+
+app.get('/api/leads/:id/source-history', authenticate, (req: any, res: any) => {
+  const { tenantId, role, id: userId } = req.user;
+  const { id } = req.params;
+  const lead = role === 'admin' || role === 'master'
+    ? db.prepare('SELECT id FROM leads WHERE id = ? AND tenant_id = ?').get(id, tenantId)
+    : db.prepare(`SELECT l.id FROM leads l LEFT JOIN conversations c ON c.lead_id = l.id WHERE l.id = ? AND l.tenant_id = ? AND (l.assigned_to = ? OR l.owner_user_id = ? OR c.assigned_to = ?)`).get(id, tenantId, userId, userId, userId);
+  if (!lead) return res.status(404).json({ error: 'Lead não encontrado ou sem permissão' });
+  res.json(db.prepare('SELECT source, source_type, campaign, source_page, created_at FROM lead_source_history WHERE lead_id = ? AND tenant_id = ? ORDER BY created_at DESC').all(id, tenantId));
+});
+
+app.get('/api/tenant/lead-capture', authenticate, (req: any, res: any) => {
+  const { tenantId, role } = req.user;
+  if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Sem permissão' });
+  const settings = db.prepare('SELECT lead_capture_token FROM tenant_settings WHERE tenant_id = ?').get(tenantId) as any;
+  if (!settings) return res.status(404).json({ error: 'Configurações do cliente não encontradas' });
+  res.json({ endpoint: '/api/public/leads', token: settings.lead_capture_token, header: 'X-Capture-Token' });
 });
 
 // Conversations
@@ -699,7 +798,7 @@ app.get('/api/conversations', authenticate, (req: any, res: any) => {
       SELECT c.*, l.name as lead_name, l.phone as lead_phone 
       FROM conversations c
       JOIN leads l ON c.lead_id = l.id
-      WHERE c.tenant_id = ? AND c.assigned_to = ?
+      WHERE c.tenant_id = ? AND (c.assigned_to = ? OR c.assigned_to IS NULL OR c.status IN ('new', 'unassigned'))
       ORDER BY c.updated_at DESC
     `).all(tenantId, userId);
   }
@@ -745,7 +844,7 @@ app.patch('/api/conversations/:id/assign', authenticate, async (req: any, res: a
   if (!conv) return res.status(404).json({ error: 'Conversa não encontrada' });
   
   if (role !== 'admin' && role !== 'master') {
-     if (conv.assigned_to && conv.assigned_to !== currentUserId && assigned_to !== currentUserId) {
+     if (assigned_to !== currentUserId || (conv.assigned_to && conv.assigned_to !== currentUserId)) {
         return res.status(403).json({ error: 'Não autorizado a atribuir esta conversa' });
      }
   }
@@ -766,6 +865,34 @@ app.patch('/api/conversations/:id/assign', authenticate, async (req: any, res: a
   );
 
   await commitDbChanges();
+  const saved = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as any;
+  res.json({ ...saved, tenantId: saved.tenant_id, leadId: saved.lead_id, assignedTo: saved.assigned_to, createdAt: saved.created_at, updatedAt: saved.updated_at });
+});
+
+app.patch('/api/pipelines/:pipelineId/stages/reorder', authenticate, async (req: any, res: any) => {
+  const { tenantId, role } = req.user;
+  const { pipelineId } = req.params;
+  const { stage_ids } = req.body;
+  if (role !== 'admin' && role !== 'master') return res.status(403).json({ error: 'Sem permissão para reordenar etapas' });
+  if (!Array.isArray(stage_ids) || stage_ids.length === 0 || new Set(stage_ids).size !== stage_ids.length) {
+    return res.status(400).json({ error: 'A ordem das etapas é inválida' });
+  }
+
+  const stages = db.prepare(`
+    SELECT ps.id FROM pipeline_stages ps
+    JOIN pipelines p ON p.id = ps.pipeline_id
+    WHERE ps.pipeline_id = ? AND p.tenant_id = ?
+  `).all(pipelineId, tenantId) as Array<{ id: string }>;
+  if (stages.length !== stage_ids.length || stages.some(stage => !stage_ids.includes(stage.id))) {
+    return res.status(400).json({ error: 'Todas as etapas do funil devem ser informadas' });
+  }
+
+  db.transaction(() => {
+    const update = db.prepare('UPDATE pipeline_stages SET "order" = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND pipeline_id = ?');
+    stage_ids.forEach((id: string, index: number) => update.run(-(index + 1), id, pipelineId));
+    stage_ids.forEach((id: string, index: number) => update.run(index, id, pipelineId));
+  })();
+  await commitDbChanges();
   res.json({ success: true });
 });
 
@@ -773,6 +900,8 @@ app.patch('/api/conversations/:id/status', authenticate, async (req: any, res: a
   const { tenantId, id: currentUserId, role } = req.user;
   const { id } = req.params;
   const { status, close_reason } = req.body;
+  const allowedStatuses = ['in_progress', 'waiting_customer', 'waiting_agent', 'closed', 'reopened', 'archived'];
+  if (!allowedStatuses.includes(status)) return res.status(400).json({ error: 'Status de conversa inválido' });
   
   const conv = db.prepare('SELECT * FROM conversations WHERE id = ? AND tenant_id = ?').get(id, tenantId) as any;
   if (!conv) return res.status(404).json({ error: 'Conversa não encontrada' });
@@ -799,7 +928,8 @@ app.patch('/api/conversations/:id/status', authenticate, async (req: any, res: a
   );
 
   await commitDbChanges();
-  res.json({ success: true });
+  const saved = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as any;
+  res.json({ ...saved, tenantId: saved.tenant_id, leadId: saved.lead_id, assignedTo: saved.assigned_to, createdAt: saved.created_at, updatedAt: saved.updated_at });
 });
 
 app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: any) => {
@@ -818,30 +948,24 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: 
   const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ? AND connection_status = ?').get(tenantId, 'connected') as any;
 
   let externalMessageId = null;
-  let status = 'sent';
+  let status = 'pending';
 
   if (connection && lead?.phone) {
      try {
-         const response = await fetch(`https://graph.facebook.com/v19.0/${connection.phone_number_id}/messages`, {
-             method: 'POST',
-             headers: {
-                 'Authorization': `Bearer ${connection.access_token_encrypted}`,
-                 'Content-Type': 'application/json'
-             },
-             body: JSON.stringify({
-                 messaging_product: 'whatsapp',
-                 to: lead.phone,
-                 type: 'text',
-                 text: { body: text }
-             })
+         const result = await metaFetch(`/${connection.phone_number_id}/messages`, {
+           method: 'POST',
+           accessToken: decryptToken(connection),
+           body: {
+             messaging_product: 'whatsapp',
+             to: normalizePhone(lead.phone),
+             type: 'text',
+             text: { body: text }
+           }
          });
-         
-         const result = await response.json() as any;
-         if (result.error) {
-             console.error("Meta API Error:", result.error);
-             status = 'failed';
-         } else if (result.messages && result.messages.length > 0) {
-             externalMessageId = result.messages[0].id;
+
+         if (result.messages && result.messages.length > 0) {
+           externalMessageId = result.messages[0].id;
+           status = 'sent';
          }
      } catch (err) {
          console.error("Meta API Fetch Error:", err);
@@ -850,9 +974,12 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: 
   }
 
   const messageId = Math.random().toString(36).substring(2, 9);
-  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, text, status, external_message_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
-    messageId, id, userId, 'user', 'outbound', text, status, externalMessageId
+  db.prepare('INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, channel, message_type, text, status, external_message_id, sent_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? = \'sent\' THEN CURRENT_TIMESTAMP ELSE NULL END)').run(
+    messageId, id, userId, 'user', 'outbound', 'whatsapp', 'text', text, status, externalMessageId, status
   );
+  if (connection && status !== 'failed') {
+    db.prepare('UPDATE whatsapp_connections SET last_outbound_message_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(connection.id);
+  }
   
   if (conv.status === 'waiting_agent' || conv.status === 'new') {
      db.prepare('UPDATE conversations SET status = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('in_progress', id);
@@ -870,7 +997,6 @@ app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: 
 
 // AI Routes
 import { generateAiResponse } from './src/services/openaiService.js';
-import crypto from 'crypto';
 
 function getTenantAiUsageThisMonth(tenantId: string) {
   const row = db.prepare(`
@@ -1210,50 +1336,561 @@ app.get('/api/master/ai-usage', authenticate, (req: any, res: any) => {
 
 
 
+function createId() {
+  return crypto.randomUUID();
+}
+
+function requireAdmin(req: any, res: any) {
+  if (req.user.role !== 'admin' && req.user.role !== 'master') {
+    res.status(403).json({ error: 'Forbidden' });
+    return false;
+  }
+  return true;
+}
+
+function getMetaConfig() {
+  return {
+    appId: process.env.META_APP_ID || '',
+    appSecret: process.env.META_APP_SECRET || '',
+    configId: process.env.META_CONFIG_ID || '',
+    verifyToken: process.env.META_VERIFY_TOKEN || '',
+    redirectUri: process.env.META_REDIRECT_URI || '',
+    graphVersion: process.env.META_GRAPH_VERSION || 'v23.0',
+    appSecretProofEnabled: process.env.META_APP_SECRET_PROOF_ENABLED !== 'false',
+    stateTtlMinutes: Number(process.env.META_ONBOARDING_STATE_TTL_MINUTES || '10'),
+    dataDeletionStatusUrl: process.env.META_DATA_DELETION_STATUS_URL || '',
+    tokenEncryptionKey: process.env.TOKEN_ENCRYPTION_KEY || '',
+  };
+}
+
+function getMetaAvailability() {
+  const config = getMetaConfig();
+  const missing = ['appId', 'appSecret', 'configId', 'verifyToken', 'redirectUri', 'tokenEncryptionKey']
+    .filter((key) => !config[key as keyof typeof config]);
+  return { available: missing.length === 0, missing, config };
+}
+
+function getEncryptionKey() {
+  return crypto.createHash('sha256').update(getMetaConfig().tokenEncryptionKey).digest();
+}
+
+function encryptToken(token: string) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getEncryptionKey(), iv);
+  const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+  return { encrypted: encrypted.toString('base64'), iv: iv.toString('base64'), authTag: authTag.toString('base64') };
+}
+
+function decryptToken(connection: any) {
+  if (!connection?.access_token_encrypted) return null;
+  if (!connection.access_token_iv || !connection.access_token_auth_tag) return connection.access_token_encrypted;
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getEncryptionKey(), Buffer.from(connection.access_token_iv, 'base64'));
+  decipher.setAuthTag(Buffer.from(connection.access_token_auth_tag, 'base64'));
+  return Buffer.concat([
+    decipher.update(Buffer.from(connection.access_token_encrypted, 'base64')),
+    decipher.final(),
+  ]).toString('utf8');
+}
+
+function hashState(state: string) {
+  return crypto.createHash('sha256').update(state).digest('hex');
+}
+
+function sanitizeForLog(payload: any) {
+  if (!payload) return null;
+  return JSON.stringify(payload, (_key, value) => {
+    if (typeof value === 'string' && (value.startsWith('EAA') || value.length > 400)) return '[redacted]';
+    return value;
+  });
+}
+
+function buildMetaError(code: string, message: string, technicalMessage?: string, retryable = false) {
+  return { success: false, error: { code, message, technicalMessage, retryable } };
+}
+
+function recordAudit(tenantId: string | null, userId: string | null, action: string, entityType: string, entityId?: string | null, newValue?: any) {
+  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type, entity_id, new_value) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+    createId(), tenantId, userId, action, entityType, entityId || null, newValue ? sanitizeForLog(newValue) : null
+  );
+}
+
+function recordMetaEvent(event: any) {
+  db.prepare(`
+    INSERT INTO meta_integration_events (id, tenant_id, connection_id, event_type, event_status, external_id, error_code, error_message, payload_sanitized)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    createId(),
+    event.tenantId || null,
+    event.connectionId || null,
+    event.eventType,
+    event.eventStatus || null,
+    event.externalId || null,
+    event.errorCode || null,
+    event.errorMessage || null,
+    sanitizeForLog(event.payload)
+  );
+}
+
+function normalizePhone(phone?: string | null) {
+  return (phone || '').replace(/\D/g, '');
+}
+
+async function metaFetch(endpoint: string, options: {
+  method?: string;
+  accessToken?: string;
+  body?: any;
+  query?: Record<string, string | number | boolean | undefined>;
+  useAppSecretProof?: boolean;
+} = {}) {
+  const { config } = getMetaAvailability();
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(options.query || {})) {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  }
+  if (options.accessToken) {
+    query.set('access_token', options.accessToken);
+    if ((options.useAppSecretProof ?? config.appSecretProofEnabled) && config.appSecret) {
+      query.set('appsecret_proof', crypto.createHmac('sha256', config.appSecret).update(options.accessToken).digest('hex'));
+    }
+  }
+  const baseUrl = endpoint.startsWith('https://') ? endpoint : `https://graph.facebook.com/${config.graphVersion}${endpoint}`;
+  const url = query.toString() ? `${baseUrl}${baseUrl.includes('?') ? '&' : '?'}${query.toString()}` : baseUrl;
+  const response = await fetch(url, {
+    method: options.method || 'GET',
+    headers: options.body ? { 'Content-Type': 'application/json' } : undefined,
+    body: options.body ? JSON.stringify(options.body) : undefined,
+  });
+  const text = await response.text();
+  const json = text ? JSON.parse(text) : {};
+  if (!response.ok || json?.error) {
+    const error: any = new Error(json?.error?.message || `Meta request failed (${response.status})`);
+    error.status = response.status;
+    error.meta = json?.error || json;
+    throw error;
+  }
+  return json;
+}
+
+async function exchangeCodeForAccessToken(code: string) {
+  const { config } = getMetaAvailability();
+  const query = new URLSearchParams({
+    client_id: config.appId,
+    client_secret: config.appSecret,
+    redirect_uri: config.redirectUri,
+    code,
+  });
+  const response = await fetch(`https://graph.facebook.com/${config.graphVersion}/oauth/access_token?${query.toString()}`);
+  const json = await response.json();
+  if (!response.ok || json?.error || !json?.access_token) {
+    const error: any = new Error(json?.error?.message || 'Failed to exchange authorization code');
+    error.meta = json?.error || json;
+    throw error;
+  }
+  return json;
+}
+
+async function validateToken(accessToken: string) {
+  const { config } = getMetaAvailability();
+  return metaFetch('/debug_token', {
+    accessToken: `${config.appId}|${config.appSecret}`,
+    query: { input_token: accessToken },
+    useAppSecretProof: false,
+  });
+}
+
+async function fetchPhoneDetails(phoneNumberId: string, accessToken: string) {
+  return metaFetch(`/${phoneNumberId}`, {
+    accessToken,
+    query: { fields: 'id,display_phone_number,verified_name,code_verification_status,name_status,quality_rating,platform_type' },
+  });
+}
+
+async function fetchWabaPhones(wabaId: string, accessToken: string) {
+  return metaFetch(`/${wabaId}/phone_numbers`, {
+    accessToken,
+    query: { fields: 'id,display_phone_number,verified_name,code_verification_status,name_status,quality_rating,platform_type' },
+  });
+}
+
+async function subscribeAppToWaba(wabaId: string, accessToken: string) {
+  return metaFetch(`/${wabaId}/subscribed_apps`, { method: 'POST', accessToken });
+}
+
+function getConnectionStatusResponse(tenantId: string) {
+  const connections = db.prepare(`
+    SELECT id, tenant_id, provider, connection_status, onboarding_status, onboarding_step, onboarding_error_code, onboarding_error_message,
+           meta_business_id, waba_id, phone_number_id, display_phone_number, verified_name, code_verification_status, name_status,
+           quality_rating, platform_type, webhook_subscribed, app_subscribed_to_waba, phone_registered, onboarding_completed_at,
+           token_last_validated_at, last_sync_at, last_health_check_at, last_health_status, last_inbound_message_at, last_outbound_message_at,
+           last_status_message_at, last_error_at, connected_at, disconnected_at, created_at, updated_at
+    FROM whatsapp_connections
+    WHERE tenant_id = ?
+    ORDER BY created_at DESC
+  `).all(tenantId);
+  return { available: getMetaAvailability().available, connections };
+}
+
+async function refreshConnectionFromMeta(connection: any) {
+  const accessToken = decryptToken(connection);
+  if (!accessToken) throw new Error('Missing decrypted access token');
+  const tokenInfo = await validateToken(accessToken);
+  const phone = await fetchPhoneDetails(connection.phone_number_id, accessToken);
+  const wabaPhones = await fetchWabaPhones(connection.waba_id, accessToken);
+  const belongsToWaba = Array.isArray(wabaPhones?.data) && wabaPhones.data.some((item: any) => item.id === connection.phone_number_id);
+  db.prepare(`
+    UPDATE whatsapp_connections
+    SET display_phone_number = ?, verified_name = ?, code_verification_status = ?, name_status = ?, quality_rating = ?, platform_type = ?,
+        phone_registered = ?, token_last_validated_at = CURRENT_TIMESTAMP, last_sync_at = CURRENT_TIMESTAMP, last_health_check_at = CURRENT_TIMESTAMP,
+        last_health_status = ?, connection_status = ?, onboarding_error_code = NULL, onboarding_error_message = NULL, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(
+    phone.display_phone_number || connection.display_phone_number || '',
+    phone.verified_name || null,
+    phone.code_verification_status || null,
+    phone.name_status || null,
+    phone.quality_rating || null,
+    phone.platform_type || null,
+    belongsToWaba ? 1 : 0,
+    tokenInfo?.data?.is_valid ? 'healthy' : 'warning',
+    tokenInfo?.data?.is_valid && belongsToWaba ? 'connected' : 'connected_warning',
+    connection.id
+  );
+  return db.prepare('SELECT * FROM whatsapp_connections WHERE id = ?').get(connection.id) as any;
+}
+
+function isWebhookSignatureValid(req: any) {
+  const appSecret = process.env.META_APP_SECRET;
+  const signature = req.headers['x-hub-signature-256'];
+  if (!appSecret || !signature || !req.rawBody) return false;
+  const expected = `sha256=${crypto.createHmac('sha256', appSecret).update(req.rawBody).digest('hex')}`;
+  const expectedBuffer = Buffer.from(expected);
+  const receivedBuffer = Buffer.from(String(signature));
+  return expectedBuffer.length === receivedBuffer.length && crypto.timingSafeEqual(expectedBuffer, receivedBuffer);
+}
+
+function getOrCreateLeadForWebhook(tenantId: string, phone: string) {
+  const normalizedPhone = normalizePhone(phone);
+  let lead = db.prepare('SELECT * FROM leads WHERE tenant_id = ? AND phone = ?').get(tenantId, normalizedPhone) as any;
+  if (!lead) {
+    const leadId = createId();
+    db.prepare('INSERT INTO leads (id, tenant_id, name, phone, source) VALUES (?, ?, ?, ?, ?)').run(leadId, tenantId, `Lead ${normalizedPhone}`, normalizedPhone, 'whatsapp');
+    lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId) as any;
+  }
+  return lead;
+}
+
+function getOrCreateConversationForWebhook(tenantId: string, leadId: string) {
+  let conversation = db.prepare(`
+    SELECT * FROM conversations
+    WHERE tenant_id = ? AND lead_id = ? AND status != 'closed'
+    ORDER BY updated_at DESC, created_at DESC
+    LIMIT 1
+  `).get(tenantId, leadId) as any;
+  if (!conversation) {
+    const conversationId = createId();
+    db.prepare('INSERT INTO conversations (id, tenant_id, lead_id, status, protocol_number) VALUES (?, ?, ?, ?, ?)').run(
+      conversationId, tenantId, leadId, 'waiting_agent', `WAPP-${Date.now()}`
+    );
+    conversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(conversationId) as any;
+  }
+  return conversation;
+}
+
+function parseInboundMessage(message: any) {
+  const messageType = message?.type || 'unsupported';
+  if (messageType === 'text') return { text: message.text?.body || '', messageType };
+  return { text: `[${messageType}]`, messageType };
+}
+
 app.get('/api/whatsapp/status', authenticate, (req: any, res: any) => {
-  const { tenantId } = req.user;
-  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
-  res.json(connection || null);
+  const status = getConnectionStatusResponse(req.user.tenantId);
+  res.json(status.connections[0] || null);
 });
 
 app.post('/api/whatsapp/connect', authenticate, async (req: any, res: any) => {
-  const { tenantId } = req.user;
+  if (!requireAdmin(req, res)) return;
   const { phone_number_id, waba_id, access_token, display_phone_number } = req.body;
-  
   if (!phone_number_id || !waba_id || !access_token) {
-     return res.status(400).json({ error: 'Faltam credenciais' });
+     return res.status(400).json(buildMetaError('META_CONFIG_MISSING', 'Faltam credenciais para a conexão manual.'));
   }
-
-  const existing = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ?').get(tenantId);
-  
+  const existingByPhone = db.prepare('SELECT tenant_id FROM whatsapp_connections WHERE phone_number_id = ? AND tenant_id != ?').get(phone_number_id, req.user.tenantId) as any;
+  if (existingByPhone) {
+    return res.status(409).json(buildMetaError('META_PHONE_ALREADY_ASSIGNED', 'Este número já está associado a outro tenant.'));
+  }
+  const encrypted = encryptToken(access_token);
+  const existing = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ? AND provider = ?').get(req.user.tenantId, 'meta') as any;
   if (existing) {
-     db.prepare('UPDATE whatsapp_connections SET connection_status = ?, phone_number_id = ?, waba_id = ?, display_phone_number = ?, access_token_encrypted = ?, connected_at = CURRENT_TIMESTAMP WHERE tenant_id = ?').run(
-       'connected', phone_number_id, waba_id, display_phone_number || '', access_token, tenantId
-     );
+     db.prepare(`
+       UPDATE whatsapp_connections
+       SET connection_status = ?, onboarding_status = ?, onboarding_step = ?, phone_number_id = ?, waba_id = ?, display_phone_number = ?,
+           access_token_encrypted = ?, access_token_iv = ?, access_token_auth_tag = ?, connected_at = CURRENT_TIMESTAMP,
+           disconnected_at = NULL, token_revoked_at = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?
+     `).run('connected_warning', 'legacy_manual', 'manual_connection', phone_number_id, waba_id, display_phone_number || '', encrypted.encrypted, encrypted.iv, encrypted.authTag, existing.id);
   } else {
-     db.prepare('INSERT INTO whatsapp_connections (id, tenant_id, connection_status, phone_number_id, waba_id, display_phone_number, access_token_encrypted, connected_at) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)').run(
-       Math.random().toString(36).substring(2, 9), tenantId, 'connected', phone_number_id, waba_id, display_phone_number || '', access_token
-     );
+     db.prepare(`
+       INSERT INTO whatsapp_connections (
+         id, tenant_id, provider, connection_status, onboarding_status, onboarding_step, phone_number_id, waba_id,
+         display_phone_number, access_token_encrypted, access_token_iv, access_token_auth_tag, connected_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+     `).run(createId(), req.user.tenantId, 'meta', 'connected_warning', 'legacy_manual', 'manual_connection', phone_number_id, waba_id, display_phone_number || '', encrypted.encrypted, encrypted.iv, encrypted.authTag);
   }
-  
-  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
-    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Conectado', 'whatsapp_connections'
-  );
-  
+  recordAudit(req.user.tenantId, req.user.id, 'WhatsApp Conectado Manualmente', 'whatsapp_connections');
   await commitDbChanges();
   res.json({ success: true });
 });
 
 app.post('/api/whatsapp/disconnect', authenticate, async (req: any, res: any) => {
-  const { tenantId } = req.user;
-  db.prepare('DELETE FROM whatsapp_connections WHERE tenant_id = ?').run(tenantId);
-  
-  db.prepare('INSERT INTO audit_logs (id, tenant_id, user_id, action, entity_type) VALUES (?, ?, ?, ?, ?)').run(
-    Math.random().toString(36).substring(2, 9), tenantId, req.user.id, 'WhatsApp Desconectado', 'whatsapp_connections'
-  );
-  
+  if (!requireAdmin(req, res)) return;
+  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ? AND provider = ? ORDER BY created_at DESC LIMIT 1').get(req.user.tenantId, 'meta') as any;
+  if (!connection) return res.json({ success: true });
+  db.prepare(`
+    UPDATE whatsapp_connections
+    SET connection_status = 'disconnected', webhook_subscribed = 0, app_subscribed_to_waba = 0,
+        disconnected_at = CURRENT_TIMESTAMP, token_revoked_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+    WHERE id = ?
+  `).run(connection.id);
+  recordAudit(req.user.tenantId, req.user.id, 'Meta Desconectada', 'whatsapp_connections', connection.id);
+  recordMetaEvent({ tenantId: req.user.tenantId, connectionId: connection.id, eventType: 'disconnect', eventStatus: 'success' });
   await commitDbChanges();
   res.json({ success: true });
+});
+
+app.get('/api/integrations/meta/status', authenticate, (req: any, res: any) => {
+  res.json(getConnectionStatusResponse(req.user.tenantId));
+});
+
+app.post('/api/integrations/meta/signup/start', authenticate, async (req: any, res: any) => {
+  if (!requireAdmin(req, res)) return;
+  const availability = getMetaAvailability();
+  if (!availability.available) {
+    return res.status(503).json(buildMetaError('META_CONFIG_MISSING', 'A integração com a Meta ainda não está disponível neste ambiente.', `Missing config: ${availability.missing.join(', ')}`));
+  }
+  const state = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + availability.config.stateTtlMinutes * 60_000).toISOString();
+  db.prepare("UPDATE meta_onboarding_sessions SET status = 'invalidated' WHERE tenant_id = ? AND user_id = ? AND status = 'created'").run(req.user.tenantId, req.user.id);
+  db.prepare('INSERT INTO meta_onboarding_sessions (id, tenant_id, user_id, state_hash, status, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+    createId(), req.user.tenantId, req.user.id, hashState(state), 'created', expiresAt
+  );
+  recordAudit(req.user.tenantId, req.user.id, 'Meta Onboarding Iniciado', 'meta_onboarding_sessions', null, { expiresAt });
+  await commitDbChanges();
+  res.json({ appId: availability.config.appId, configId: availability.config.configId, redirectUri: availability.config.redirectUri, state, expiresAt });
+});
+
+app.post('/api/integrations/meta/signup/complete', authenticate, async (req: any, res: any) => {
+  if (!requireAdmin(req, res)) return;
+  const { code, state, sessionInfo } = req.body || {};
+  if (!code || !state) {
+    return res.status(400).json(buildMetaError('META_AUTH_CODE_INVALID', 'O retorno da Meta não trouxe os dados necessários para concluir a conexão.'));
+  }
+  const session = db.prepare('SELECT * FROM meta_onboarding_sessions WHERE tenant_id = ? AND state_hash = ? ORDER BY created_at DESC LIMIT 1').get(req.user.tenantId, hashState(state)) as any;
+  if (!session) return res.status(400).json(buildMetaError('META_ONBOARDING_STATE_INVALID', 'A sessão de onboarding não é válida.'));
+  if (session.status !== 'created' || session.used_at) return res.status(409).json(buildMetaError('META_ONBOARDING_STATE_INVALID', 'Esta sessão de onboarding já foi utilizada.'));
+  if (new Date(session.expires_at).getTime() < Date.now()) {
+    db.prepare("UPDATE meta_onboarding_sessions SET status = 'expired' WHERE id = ?").run(session.id);
+    await commitDbChanges();
+    return res.status(410).json(buildMetaError('META_ONBOARDING_STATE_EXPIRED', 'A sessão expirou. Inicie a conexão novamente.'));
+  }
+
+  const tenantId = req.user.tenantId;
+  const existingConnection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ? AND provider = ? ORDER BY created_at DESC LIMIT 1').get(tenantId, 'meta') as any;
+  const connectionId = existingConnection?.id || createId();
+
+  try {
+    const tokenExchange = await exchangeCodeForAccessToken(code);
+    const accessToken = tokenExchange.access_token;
+    const tokenInfo = await validateToken(accessToken);
+    const wabaId = sessionInfo?.wabaId || sessionInfo?.waba_id;
+    const phoneNumberId = sessionInfo?.phoneNumberId || sessionInfo?.phone_number_id;
+    const metaBusinessId = sessionInfo?.businessId || sessionInfo?.business_id || null;
+    if (!wabaId) throw Object.assign(new Error('Missing WABA ID from session info'), { internalCode: 'META_WABA_NOT_FOUND' });
+    if (!phoneNumberId) throw Object.assign(new Error('Missing Phone Number ID from session info'), { internalCode: 'META_PHONE_NOT_FOUND' });
+    const existingByPhone = db.prepare('SELECT tenant_id FROM whatsapp_connections WHERE phone_number_id = ? AND tenant_id != ?').get(phoneNumberId, tenantId) as any;
+    if (existingByPhone) throw Object.assign(new Error('Phone already assigned'), { internalCode: 'META_PHONE_ALREADY_ASSIGNED' });
+    const wabaPhones = await fetchWabaPhones(wabaId, accessToken);
+    const phoneBelongsToWaba = Array.isArray(wabaPhones?.data) && wabaPhones.data.some((item: any) => item.id === phoneNumberId);
+    if (!phoneBelongsToWaba) throw Object.assign(new Error('Phone not found in WABA'), { internalCode: 'META_PHONE_NOT_FOUND' });
+    const phone = await fetchPhoneDetails(phoneNumberId, accessToken);
+    await subscribeAppToWaba(wabaId, accessToken);
+    const encrypted = encryptToken(accessToken);
+    db.prepare(`
+      INSERT INTO whatsapp_connections (
+        id, tenant_id, provider, connection_status, onboarding_status, onboarding_step, onboarding_completed_at,
+        meta_business_id, waba_id, phone_number_id, display_phone_number, verified_name, code_verification_status, name_status,
+        quality_rating, platform_type, access_token_encrypted, access_token_iv, access_token_auth_tag, token_type,
+        token_last_validated_at, webhook_subscribed, app_subscribed_to_waba, phone_registered, connected_at, disconnected_at,
+        onboarding_error_code, onboarding_error_message, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?, ?, CURRENT_TIMESTAMP, NULL, NULL, NULL, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        connection_status = excluded.connection_status,
+        onboarding_status = excluded.onboarding_status,
+        onboarding_step = excluded.onboarding_step,
+        onboarding_completed_at = excluded.onboarding_completed_at,
+        meta_business_id = excluded.meta_business_id,
+        waba_id = excluded.waba_id,
+        phone_number_id = excluded.phone_number_id,
+        display_phone_number = excluded.display_phone_number,
+        verified_name = excluded.verified_name,
+        code_verification_status = excluded.code_verification_status,
+        name_status = excluded.name_status,
+        quality_rating = excluded.quality_rating,
+        platform_type = excluded.platform_type,
+        access_token_encrypted = excluded.access_token_encrypted,
+        access_token_iv = excluded.access_token_iv,
+        access_token_auth_tag = excluded.access_token_auth_tag,
+        token_type = excluded.token_type,
+        token_last_validated_at = excluded.token_last_validated_at,
+        webhook_subscribed = excluded.webhook_subscribed,
+        app_subscribed_to_waba = excluded.app_subscribed_to_waba,
+        phone_registered = excluded.phone_registered,
+        connected_at = excluded.connected_at,
+        disconnected_at = NULL,
+        onboarding_error_code = NULL,
+        onboarding_error_message = NULL,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(
+      connectionId, tenantId, 'meta', 'connected', 'completed', 'diagnostics_ok', metaBusinessId, wabaId, phoneNumberId,
+      phone.display_phone_number || '', phone.verified_name || null, phone.code_verification_status || null, phone.name_status || null,
+      phone.quality_rating || null, phone.platform_type || null, encrypted.encrypted, encrypted.iv, encrypted.authTag,
+      tokenExchange.token_type || tokenInfo?.data?.type || 'bearer', 1, 1, 1
+    );
+    db.prepare("UPDATE meta_onboarding_sessions SET status = 'used', used_at = CURRENT_TIMESTAMP WHERE id = ?").run(session.id);
+    recordAudit(tenantId, req.user.id, 'Meta Onboarding Concluído', 'whatsapp_connections', connectionId, { wabaId, phoneNumberId, metaBusinessId });
+    recordMetaEvent({ tenantId, connectionId, eventType: 'onboarding_completed', eventStatus: 'success', payload: { sessionInfo, tokenInfo: { is_valid: tokenInfo?.data?.is_valid } } });
+    await commitDbChanges();
+    res.json({ success: true, connection: getConnectionStatusResponse(tenantId).connections[0] || null });
+  } catch (error: any) {
+    const code = String(error.internalCode || error.meta?.code || 'META_TOKEN_EXCHANGE_FAILED');
+    db.prepare(`
+      INSERT INTO whatsapp_connections (id, tenant_id, provider, connection_status, onboarding_status, onboarding_step, onboarding_error_code, onboarding_error_message, last_error_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        connection_status = excluded.connection_status,
+        onboarding_status = excluded.onboarding_status,
+        onboarding_step = excluded.onboarding_step,
+        onboarding_error_code = excluded.onboarding_error_code,
+        onboarding_error_message = excluded.onboarding_error_message,
+        last_error_at = CURRENT_TIMESTAMP,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(connectionId, tenantId, 'meta', 'failed', 'failed', 'complete', code, error.message);
+    db.prepare("UPDATE meta_onboarding_sessions SET status = 'failed' WHERE id = ?").run(session.id);
+    recordMetaEvent({ tenantId, connectionId, eventType: 'onboarding_failed', eventStatus: 'failed', errorCode: code, errorMessage: error.message, payload: { sessionInfo, meta: error.meta } });
+    recordAudit(tenantId, req.user.id, 'Meta Onboarding Falhou', 'whatsapp_connections', connectionId, { code, message: error.message });
+    await commitDbChanges();
+    res.status(400).json(buildMetaError(code, code === 'META_PHONE_ALREADY_ASSIGNED' ? 'Este número já está conectado em outro tenant.' : 'Não foi possível concluir a autorização com a Meta.', error.message));
+  }
+});
+
+app.post('/api/integrations/meta/status/refresh', authenticate, async (req: any, res: any) => {
+  if (!requireAdmin(req, res)) return;
+  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ? AND provider = ? ORDER BY created_at DESC LIMIT 1').get(req.user.tenantId, 'meta') as any;
+  if (!connection) return res.status(404).json(buildMetaError('META_WABA_NOT_FOUND', 'Nenhuma conexão da Meta foi encontrada para este tenant.'));
+  try {
+    const refreshed = await refreshConnectionFromMeta(connection);
+    await commitDbChanges();
+    res.json({ success: true, connection: getConnectionStatusResponse(req.user.tenantId).connections.find((item: any) => item.id === refreshed.id) });
+  } catch (error: any) {
+    db.prepare('UPDATE whatsapp_connections SET connection_status = ?, onboarding_error_code = ?, onboarding_error_message = ?, last_error_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      'connected_warning', String(error.meta?.code || 'META_TOKEN_INVALID'), error.message, connection.id
+    );
+    await commitDbChanges();
+    res.status(400).json(buildMetaError('META_TOKEN_INVALID', 'A conexão com a Meta precisa ser validada novamente.', error.message, true));
+  }
+});
+
+app.post('/api/integrations/meta/test', authenticate, async (req: any, res: any) => {
+  if (!requireAdmin(req, res)) return;
+  const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE tenant_id = ? AND provider = ? ORDER BY created_at DESC LIMIT 1').get(req.user.tenantId, 'meta') as any;
+  if (!connection) return res.status(404).json(buildMetaError('META_WABA_NOT_FOUND', 'Nenhuma conexão da Meta foi encontrada para teste.'));
+  try {
+    const accessToken = decryptToken(connection);
+    const tokenInfo = await validateToken(accessToken);
+    const phone = await fetchPhoneDetails(connection.phone_number_id, accessToken);
+    const wabaPhones = await fetchWabaPhones(connection.waba_id, accessToken);
+    const belongsToWaba = Array.isArray(wabaPhones?.data) && wabaPhones.data.some((item: any) => item.id === connection.phone_number_id);
+    let sendResult: any = null;
+    const destinationPhone = normalizePhone(req.body?.destinationPhone);
+    if (req.body?.sendMessage && destinationPhone) {
+      sendResult = await metaFetch(`/${connection.phone_number_id}/messages`, {
+        method: 'POST',
+        accessToken,
+        body: {
+          messaging_product: 'whatsapp',
+          to: destinationPhone,
+          type: 'text',
+          text: { body: 'Mensagem de teste da integração Consult Flow com a Meta.' },
+        },
+      });
+    }
+    db.prepare('UPDATE whatsapp_connections SET last_health_check_at = CURRENT_TIMESTAMP, last_health_status = ?, last_sync_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+      belongsToWaba && tokenInfo?.data?.is_valid ? 'healthy' : 'warning', connection.id
+    );
+    recordAudit(req.user.tenantId, req.user.id, 'Teste de Conexão Meta', 'whatsapp_connections', connection.id, { sendMessage: Boolean(sendResult) });
+    await commitDbChanges();
+    res.json({
+      success: true,
+      checks: {
+        token: Boolean(tokenInfo?.data?.is_valid),
+        waba: true,
+        phone: Boolean(phone?.id),
+        phoneBelongsToWaba: belongsToWaba,
+        webhookConfigured: Boolean(getMetaConfig().verifyToken),
+        sendMessageAccepted: Boolean(sendResult?.messages?.length),
+      },
+      sendResult,
+    });
+  } catch (error: any) {
+    res.status(400).json(buildMetaError('META_MESSAGE_SEND_FAILED', 'O teste da conexão falhou.', error.message, true));
+  }
+});
+
+app.post('/api/integrations/meta/reauthorize/start', authenticate, async (req: any, res: any) => {
+  if (!requireAdmin(req, res)) return;
+  const availability = getMetaAvailability();
+  if (!availability.available) {
+    return res.status(503).json(buildMetaError('META_CONFIG_MISSING', 'A integração com a Meta ainda não está disponível neste ambiente.', `Missing config: ${availability.missing.join(', ')}`));
+  }
+  const state = crypto.randomBytes(32).toString('hex');
+  const expiresAt = new Date(Date.now() + availability.config.stateTtlMinutes * 60_000).toISOString();
+  db.prepare("UPDATE meta_onboarding_sessions SET status = 'invalidated' WHERE tenant_id = ? AND user_id = ? AND status = 'created'").run(req.user.tenantId, req.user.id);
+  db.prepare('INSERT INTO meta_onboarding_sessions (id, tenant_id, user_id, state_hash, status, expires_at) VALUES (?, ?, ?, ?, ?, ?)').run(
+    createId(), req.user.tenantId, req.user.id, hashState(state), 'created', expiresAt
+  );
+  await commitDbChanges();
+  res.json({ appId: availability.config.appId, configId: availability.config.configId, redirectUri: availability.config.redirectUri, state, expiresAt });
+});
+
+app.post('/api/integrations/meta/deauthorize', async (req: any, res: any) => {
+  const signedRequest = req.body?.signed_request;
+  if (!signedRequest) return res.status(400).json(buildMetaError('META_WEBHOOK_SIGNATURE_INVALID', 'A desautorização enviada pela Meta não é válida.'));
+  const payloadPart = signedRequest.split('.')[1];
+  const payload = payloadPart ? JSON.parse(Buffer.from(payloadPart.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')) : null;
+  const businessId = payload?.user_id || payload?.business_id || null;
+  const connection = businessId ? db.prepare('SELECT * FROM whatsapp_connections WHERE meta_business_id = ? ORDER BY created_at DESC LIMIT 1').get(String(businessId)) as any : null;
+  if (connection) {
+    db.prepare('UPDATE whatsapp_connections SET connection_status = ?, token_revoked_at = CURRENT_TIMESTAMP, disconnected_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run('disconnected', connection.id);
+    recordMetaEvent({ tenantId: connection.tenant_id, connectionId: connection.id, eventType: 'deauthorize', eventStatus: 'success', payload });
+    await commitDbChanges();
+  }
+  res.json({ success: true });
+});
+
+app.post('/api/integrations/meta/data-deletion', async (req: any, res: any) => {
+  const confirmationCode = crypto.randomBytes(8).toString('hex');
+  const connection = req.body?.business_id ? db.prepare('SELECT * FROM whatsapp_connections WHERE meta_business_id = ? ORDER BY created_at DESC LIMIT 1').get(String(req.body.business_id)) as any : null;
+  db.prepare(`
+    INSERT INTO meta_data_deletion_requests (id, tenant_id, connection_id, confirmation_code, status, payload_sanitized, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+  `).run(createId(), connection?.tenant_id || null, connection?.id || null, confirmationCode, 'received', sanitizeForLog(req.body));
+  await commitDbChanges();
+  res.json({ url: `${getMetaConfig().dataDeletionStatusUrl || ''}/${confirmationCode}`, confirmation_code: confirmationCode });
+});
+
+app.get('/api/integrations/meta/data-deletion/status/:confirmationCode', (req: any, res: any) => {
+  const request = db.prepare('SELECT confirmation_code, status, created_at, updated_at FROM meta_data_deletion_requests WHERE confirmation_code = ?').get(req.params.confirmationCode) as any;
+  if (!request) return res.status(404).json({ error: 'Not found' });
+  res.json(request);
 });
 
 app.get('/api/meta/webhook', (req: any, res: any) => {
@@ -1266,6 +1903,62 @@ app.get('/api/meta/webhook', (req: any, res: any) => {
 });
 
 app.post('/api/meta/webhook', async (req: any, res: any) => {
+  if (!isWebhookSignatureValid(req)) {
+    return res.status(401).json(buildMetaError('META_WEBHOOK_SIGNATURE_INVALID', 'Assinatura do webhook da Meta inválida.'));
+  }
+  const body = req.body;
+  if (body.object !== 'whatsapp_business_account') {
+    return res.sendStatus(404);
+  }
+  let hasChanges = false;
+  for (const entry of body.entry || []) {
+    for (const change of entry.changes || []) {
+      const value = change.value || {};
+      const phoneNumberId = value.metadata?.phone_number_id;
+      if (!phoneNumberId) continue;
+      const connection = db.prepare('SELECT * FROM whatsapp_connections WHERE phone_number_id = ?').get(phoneNumberId) as any;
+      if (!connection) continue;
+
+      for (const message of value.messages || []) {
+        const existing = db.prepare('SELECT id FROM messages WHERE external_message_id = ?').get(message.id) as any;
+        if (existing) continue;
+        const lead = getOrCreateLeadForWebhook(connection.tenant_id, message.from);
+        const conversation = getOrCreateConversationForWebhook(connection.tenant_id, lead.id);
+        const parsed = parseInboundMessage(message);
+        db.prepare(`
+          INSERT INTO messages (id, conversation_id, sender_id, sender_type, direction, channel, message_type, text, status, external_message_id, created_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        `).run(createId(), conversation.id, lead.id, 'lead', 'inbound', 'whatsapp', parsed.messageType, parsed.text || '[sem conteúdo]', 'received', message.id);
+        db.prepare("UPDATE conversations SET status = 'waiting_agent', updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(conversation.id);
+        db.prepare('UPDATE whatsapp_connections SET last_inbound_message_at = CURRENT_TIMESTAMP, webhook_subscribed = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(connection.id);
+        recordMetaEvent({ tenantId: connection.tenant_id, connectionId: connection.id, eventType: 'webhook_message', eventStatus: 'success', externalId: message.id, payload: { type: parsed.messageType } });
+        hasChanges = true;
+      }
+
+      for (const status of value.statuses || []) {
+        db.prepare(`
+          UPDATE messages
+          SET status = ?,
+              delivered_at = CASE WHEN ? = 'delivered' THEN CURRENT_TIMESTAMP ELSE delivered_at END,
+              read_at = CASE WHEN ? = 'read' THEN CURRENT_TIMESTAMP ELSE read_at END,
+              error_code = ?,
+              error_message = ?,
+              meta_status_payload = ?,
+              sent_at = CASE WHEN ? = 'sent' THEN CURRENT_TIMESTAMP ELSE sent_at END
+          WHERE external_message_id = ?
+        `).run(status.status || 'sent', status.status || '', status.status || '', status.errors?.[0]?.code || null, status.errors?.[0]?.title || null, sanitizeForLog(status), status.status || '', status.id);
+        db.prepare('UPDATE whatsapp_connections SET last_status_message_at = CURRENT_TIMESTAMP, webhook_subscribed = 1, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(connection.id);
+        hasChanges = true;
+      }
+    }
+  }
+  if (hasChanges) {
+    await commitDbChanges();
+  }
+  res.sendStatus(200);
+});
+
+app.post('/api/meta/webhook-legacy', async (req: any, res: any) => {
   const body = req.body;
   let hasChanges = false;
   
@@ -1339,7 +2032,10 @@ async function startServer() {
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        hmr: false,
+      },
       appType: "spa",
     });
     app.use(vite.middlewares);

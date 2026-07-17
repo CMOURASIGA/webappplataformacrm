@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../store';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { fetchApi } from '../lib/api';
 import { Users, MessageSquare, CheckCircle, Clock, Database, Bot, Send, Inbox, Target, AlertTriangle } from 'lucide-react';
 import {
@@ -9,6 +9,7 @@ import {
 
 export default function Dashboard() {
   const currentUser = useStore(state => state.currentUser);
+  const navigate = useNavigate();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
@@ -36,14 +37,14 @@ export default function Dashboard() {
   const isAdmin = currentUser.role === 'admin';
 
   const cards = [
-    { name: 'Leads Ativos', value: stats.activeLeads, sub: `\${stats.wonLeads} ganhos, \${stats.lostLeads} perdidos`, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { name: 'Conversas Abertas', value: stats.openConversations, sub: `\${stats.closedConversations} finalizadas`, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100' },
-    { name: 'Aguardando Cliente', value: stats.waitingConversations, sub: 'Fila de espera', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100' },
-    { name: 'Mensagens Enviadas', value: stats.sentMessages, sub: `\${stats.receivedMessages} recebidas`, icon: Send, color: 'text-blue-600', bg: 'bg-blue-100' },
+    { name: 'Leads Ativos', value: stats.activeLeads, sub: `${stats.wonLeads} ganhos, ${stats.lostLeads} perdidos`, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-100', href: '/leads' },
+    { name: 'Conversas Abertas', value: stats.openConversations, sub: `${stats.closedConversations} finalizadas`, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100', href: '/chat?view=abertas' },
+    { name: 'Aguardando Cliente', value: stats.waitingConversations, sub: 'Fila de espera', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', href: '/chat?view=fila' },
+    { name: 'Mensagens Enviadas', value: stats.sentMessages, sub: `${stats.receivedMessages} recebidas`, icon: Send, color: 'text-blue-600', bg: 'bg-blue-100', href: '/chat?view=todas' },
   ];
 
   if (isAdmin) {
-    cards.push({ name: 'Consumo de IA (Tokens)', value: stats.totalAiTokens, sub: `\${stats.totalAiCalls} chamadas`, icon: Bot, color: 'text-rose-600', bg: 'bg-rose-100' });
+    cards.push({ name: 'Consumo de IA (Tokens)', value: stats.totalAiTokens, sub: `${stats.totalAiCalls} chamadas`, icon: Bot, color: 'text-rose-600', bg: 'bg-rose-100', href: '/settings/ai' });
   }
 
   const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#64748b'];
@@ -52,7 +53,7 @@ export default function Dashboard() {
     <div className="max-w-7xl mx-auto space-y-6 pb-12">
       <div>
         <h1 className="text-xl font-bold text-slate-800">
-          Dashboard {isAdmin ? 'Gestão Comercial' : 'Meu Desempenho'}
+          Painel: {isAdmin ? 'gestão comercial' : 'meu desempenho'}
         </h1>
         <p className="text-sm text-slate-500">
           {isAdmin ? 'Visão completa da sua empresa.' : 'Acompanhamento de seus próprios atendimentos e leads.'}
@@ -61,7 +62,12 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map(c => (
-          <div key={c.name} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
+          <button
+            key={c.name}
+            type="button"
+            onClick={() => navigate(c.href)}
+            className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-center gap-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          >
             <div className={`w-12 h-12 rounded-lg flex items-center justify-center \${c.bg}`}>
               <c.icon className={c.color} size={24} />
             </div>
@@ -70,7 +76,7 @@ export default function Dashboard() {
               <div className="text-2xl font-black text-slate-800">{c.value.toLocaleString()}</div>
               <div className="text-xs text-slate-400 font-medium">{c.sub}</div>
             </div>
-          </div>
+          </button>
         ))}
       </div>
 

@@ -21,6 +21,7 @@ import Users from './pages/admin/Users';
 import KnowledgeBase from './pages/settings/KnowledgeBase';
 import AiSettings from './pages/settings/AiSettings';
 import WhatsAppSettings from './pages/settings/WhatsAppSettings';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 export default function App() {
   return (
@@ -34,7 +35,7 @@ export default function App() {
           <Route path="crm" element={<Kanban />} />
           <Route path="settings/kanban" element={<KanbanConfig />} />
           <Route path="leads" element={<LeadsList />} />
-          <Route path="chat" element={<Chat />} />
+          <Route path="chat" element={<ErrorBoundary title="Não foi possível exibir as conversas"><Chat /></ErrorBoundary>} />
           <Route path="chat/quick-replies" element={<QuickReplies />} />
           <Route path="settings" element={<Settings />} />
           <Route path="users" element={<Users />} />

@@ -137,22 +137,22 @@ export default function Settings() {
 
   if (!tenant) return (
     <div className="p-8 text-center text-slate-500">
-      Selecione um tenant no menu superior para editar as configurações.
+      Selecione um cliente no menu superior para editar as configurações.
     </div>
   );
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">White Label Settings</h1>
+      <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">Identidade visual</h1>
       <p className="text-sm text-slate-500 -mt-4">
-        As alteracoes salvas aqui valem para todo o tenant, incluindo o acesso do atendente.
+        As alterações salvas aqui valem para todo o cliente, incluindo o acesso do atendente.
       </p>
       
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
         <form onSubmit={handleSave} className="space-y-6">
           
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-2">Company Logo</label>
+            <label className="block text-sm font-bold text-slate-700 mb-2">Logotipo da empresa</label>
             <div className="flex items-center gap-6">
               <div 
                 className="w-24 h-24 rounded-lg border-2 border-dashed border-slate-300 flex items-center justify-center bg-slate-50 overflow-hidden cursor-pointer hover:bg-slate-100 transition-colors relative group"
@@ -170,8 +170,8 @@ export default function Settings() {
                 )}
               </div>
               <div className="text-sm text-slate-500 flex-1">
-                <p>Upload the company logo.</p>
-                <p className="text-xs mt-1">We will automatically extract the dominant brand color.</p>
+                <p>Envie o logotipo da empresa.</p>
+                <p className="text-xs mt-1">A cor predominante será identificada automaticamente.</p>
                 <input 
                   type="file"
                   accept="image/*"
@@ -185,14 +185,14 @@ export default function Settings() {
                   className="mt-3 text-xs h-8"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <Upload className="w-4 h-4 mr-2" /> Upload Image
+                  <Upload className="w-4 h-4 mr-2" /> Enviar imagem
                 </Button>
               </div>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Company Name</label>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Nome da empresa</label>
             <Input 
               value={companyName} 
               onChange={e => setCompanyName(e.target.value)} 
@@ -200,7 +200,7 @@ export default function Settings() {
           </div>
           
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Primary Color</label>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Cor principal</label>
             <div className="flex gap-2 items-center">
               <input 
                 type="color" 
@@ -217,7 +217,7 @@ export default function Settings() {
           </div>
           
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Sidebar Color</label>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Cor do menu lateral</label>
             <div className="flex gap-2 items-center">
               <input 
                 type="color" 
@@ -234,7 +234,7 @@ export default function Settings() {
           </div>
 
           <div>
-            <label className="block text-sm font-bold text-slate-700 mb-1">Sidebar Text Color</label>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Cor do texto do menu</label>
             <div className="flex gap-2 items-center">
               <input 
                 type="color" 
@@ -251,13 +251,13 @@ export default function Settings() {
           </div>
           
           <div className="pt-4 border-t border-slate-100">
-            <Button type="submit">Save Settings</Button>
+            <Button type="submit">Salvar configurações</Button>
           </div>
         </form>
       </div>
       
       <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-tight mb-4">Preview</h2>
+        <h2 className="text-sm font-bold text-slate-800 uppercase tracking-tight mb-4">Pré-visualização</h2>
         <div className="p-8 rounded-lg flex flex-col items-center justify-center text-white" style={{ backgroundColor: primaryColor }}>
           {logoUrl && <img src={logoUrl} alt="Logo" className="h-16 mb-4 object-contain" />}
           <span className="text-2xl font-bold tracking-tight">{companyName}</span>

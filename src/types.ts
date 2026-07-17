@@ -55,6 +55,10 @@ export interface Lead {
   email?: string;
   company?: string;
   source: string;
+  sourceType?: 'manual' | 'automatic';
+  sourceCampaign?: string;
+  sourcePage?: string;
+  sourceCapturedAt?: string;
   status: 'new' | 'in_progress' | 'negotiation' | 'waiting' | 'won' | 'lost' | 'archived';
   assignedTo?: string; // userId
   stageId: string;
@@ -78,7 +82,7 @@ export interface Conversation {
   tenantId: string;
   leadId: string;
   assignedTo?: string; // userId
-  status: 'new' | 'unassigned' | 'assigned' | 'in_progress' | 'waiting_customer' | 'waiting_agent' | 'closed' | 'reopened' | 'transferred';
+  status: 'new' | 'unassigned' | 'assigned' | 'in_progress' | 'waiting_customer' | 'waiting_agent' | 'closed' | 'reopened' | 'transferred' | 'archived';
   createdAt: string;
   updatedAt: string;
 }
@@ -88,4 +92,5 @@ export interface QuickReply {
   tenantId: string;
   title: string;
   text: string;
+  category: string;
 }

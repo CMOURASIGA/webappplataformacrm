@@ -13,14 +13,16 @@ export default function QuickReplies() {
   const [isAdding, setIsAdding] = useState(false);
   const [title, setTitle] = useState('');
   const [text, setText] = useState('');
+  const [category, setCategory] = useState('Geral');
   const [showEmoji, setShowEmoji] = useState(false);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (title.trim() && text.trim()) {
-      await createQuickReply(title, text);
+      await createQuickReply(title, text, category);
       setTitle('');
       setText('');
+      setCategory('Geral');
       setIsAdding(false);
       setShowEmoji(false);
     }
@@ -36,18 +38,22 @@ export default function QuickReplies() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Respostas Rápidas</h1>
           <p className="text-sm text-slate-500 mt-1">
-            Crie modelos de mensagens para usar rapidamente no chat.
+            Crie modelos que o atendente insere e pode editar antes do envio.
           </p>
         </div>
         <Button onClick={() => setIsAdding(true)} className="gap-2">
-          <Plus size={16} /> Nova Resposta
+          <Plus size={16} /> Nova resposta
         </Button>
       </div>
 
       {isAdding && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-800 mb-4">Adicionar Nova Resposta</h2>
+          <h2 className="text-lg font-bold text-slate-800 mb-4">Adicionar nova resposta</h2>
           <form onSubmit={handleCreate} className="space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Categoria</label>
+              <Input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="Ex.: Comercial" required />
+            </div>
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Título</label>
               <Input 
@@ -118,6 +124,7 @@ export default function QuickReplies() {
                 <Trash2 size={16} />
               </button>
             </div>
+            <div className="px-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-primary-600">{reply.category || 'Geral'}</div>
             <div className="p-4 flex-1 text-sm text-slate-600 overflow-y-auto max-h-[200px] whitespace-pre-wrap">
               {reply.text}
             </div>

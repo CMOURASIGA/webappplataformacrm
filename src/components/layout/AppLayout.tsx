@@ -14,6 +14,7 @@ import {
 import { Sparkles, Book } from "lucide-react";
 import { cn } from "../../lib/utils";
 import { useApplyTenantTheme } from "../../hooks/useApplyTenantTheme";
+import { ContextHelp } from "./ContextHelp";
 
 export function AppLayout() {
   const {
@@ -77,7 +78,7 @@ export function AppLayout() {
       title: "Geral",
       items: [
         {
-          name: "Dashboard",
+          name: "Painel",
           href: "/dashboard",
           icon: <LayoutDashboard size={16} />,
           adminOnly: false,
@@ -85,7 +86,7 @@ export function AppLayout() {
       ],
     },
     {
-      title: "Chat / Mensagens",
+      title: "Atendimento",
       items: [
         {
           name: "Conversas",
@@ -102,10 +103,10 @@ export function AppLayout() {
       ],
     },
     {
-      title: "CRM / Kanban",
+      title: "Gestão comercial",
       items: [
         {
-          name: "Kanban (Leads)",
+          name: "Funil de leads",
           href: "/crm",
           icon: <Trello size={16} />,
           adminOnly: false,
@@ -117,7 +118,7 @@ export function AppLayout() {
           adminOnly: false,
         },
         {
-          name: "Configuração Kanban",
+          name: "Configuração do funil",
           href: "/settings/kanban",
           icon: <Settings size={16} />,
           adminOnly: true,
@@ -128,7 +129,7 @@ export function AppLayout() {
       title: "Configurações",
       items: [
         {
-          name: "White Label",
+          name: "Identidade visual",
           href: "/settings",
           icon: <Settings size={16} />,
           adminOnly: true,
@@ -151,12 +152,12 @@ export function AppLayout() {
 
   const masterNavigation = [
     {
-      name: "Dashboard Master",
+      name: "Painel master",
       href: "/master/dashboard",
       icon: <LayoutDashboard size={16} />,
     },
     {
-      name: "Tenants (Clientes)",
+      name: "Clientes",
       href: "/master/tenants",
       icon: <Building2 size={16} />,
     },
@@ -211,7 +212,7 @@ export function AppLayout() {
           )}
           <span className="font-bold text-white tracking-tight">
             {isMaster
-              ? "Master Panel"
+              ? "Painel master"
               : tenant?.settings?.companyName || "CRM Flow"}{" "}
             <span className="text-xs font-normal opacity-50">MVP</span>
           </span>
@@ -267,7 +268,7 @@ export function AppLayout() {
                 {currentUser.name}
               </span>
               <span className="text-xs opacity-50 capitalize">
-                {currentUser.role}
+                {currentUser.role === "user" ? "Atendente" : currentUser.role === "admin" ? "Administrador" : "Master"}
               </span>
             </div>
           </div>
@@ -275,7 +276,7 @@ export function AppLayout() {
             onClick={handleLogout}
             className="flex items-center gap-2 text-sm opacity-80 hover:opacity-100 w-full py-2 px-3 rounded hover:bg-black/10 transition-colors"
           >
-            <LogOut size={16} /> Logout
+            <LogOut size={16} /> Sair
           </button>
         </div>
       </aside>
@@ -288,15 +289,17 @@ export function AppLayout() {
               {/* Optional header title or context could go here */}
             </h1>
             <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-              Status: Online
+              Online
             </span>
+            <div className="hidden sm:block border-l border-slate-200 pl-4"><span className="block text-[10px] font-bold uppercase text-slate-400">Usuário autenticado</span><span className="block text-sm font-semibold text-slate-700">{currentUser.name}</span></div>
+            {tenant && <div className="hidden md:block border-l border-slate-200 pl-4"><span className="block text-[10px] font-bold uppercase text-slate-400">Cliente ativo</span><span className="block text-sm font-semibold text-slate-700">{tenant.name}</span></div>}
           </div>
 
           <div className="flex items-center gap-6">
             {isMaster && (
               <div className="flex items-center">
                 <span className="text-xs font-bold text-slate-500 mr-2 uppercase">
-                  Operar como:
+                  Cliente ativo:
                 </span>
                 <select
                   value={activeTenantId || ""}
@@ -313,28 +316,7 @@ export function AppLayout() {
               </div>
             )}
 
-            <div className="relative hidden md:block">
-              <input
-                type="text"
-                placeholder="Buscar..."
-                className="w-64 pl-10 pr-4 py-2 bg-slate-100 border-transparent rounded-full text-sm focus:bg-white focus:ring-2 focus:ring-primary-500 outline-none transition-all"
-              />
-              <div className="absolute left-3.5 top-2.5 text-slate-400">
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                  ></path>
-                </svg>
-              </div>
-            </div>
+            <ContextHelp />
           </div>
         </header>
         <div className="flex-1 overflow-auto p-6">
