@@ -12,16 +12,18 @@ export default function Dashboard() {
   const navigate = useNavigate();
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (currentUser?.role === 'master') return;
 
     fetchApi('/dashboard/tenant')
-      .then(data => {
-        setStats(data);
-        setLoading(false);
+      .then(data => setStats(data))
+      .catch(err => {
+        console.error('Dashboard load failed:', err);
+        setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os indicadores.');
       })
-      .catch(console.error);
+      .finally(() => setLoading(false));
   }, [currentUser]);
 
   if (!currentUser) return null;
@@ -35,16 +37,31 @@ export default function Dashboard() {
   }
 
   const isAdmin = currentUser.role === 'admin';
+  const numberValue = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const safeStats = {
+    activeLeads: numberValue(stats?.activeLeads),
+    wonLeads: numberValue(stats?.wonLeads),
+    lostLeads: numberValue(stats?.lostLeads),
+    openConversations: numberValue(stats?.openConversations),
+    closedConversations: numberValue(stats?.closedConversations),
+    waitingConversations: numberValue(stats?.waitingConversations),
+    sentMessages: numberValue(stats?.sentMessages),
+    receivedMessages: numberValue(stats?.receivedMessages),
+    totalAiTokens: numberValue(stats?.totalAiTokens),
+    totalAiCalls: numberValue(stats?.totalAiCalls),
+    leadsByStage: Array.isArray(stats?.leadsByStage) ? stats.leadsByStage : [],
+    aiUsageByAction: Array.isArray(stats?.aiUsageByAction) ? stats.aiUsageByAction : [],
+  };
 
   const cards = [
-    { name: 'Leads Ativos', value: stats.activeLeads, sub: `${stats.wonLeads} ganhos, ${stats.lostLeads} perdidos`, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-100', href: '/leads' },
-    { name: 'Conversas Abertas', value: stats.openConversations, sub: `${stats.closedConversations} finalizadas`, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100', href: '/chat?view=abertas' },
-    { name: 'Aguardando Cliente', value: stats.waitingConversations, sub: 'Fila de espera', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', href: '/chat?view=fila' },
-    { name: 'Mensagens Enviadas', value: stats.sentMessages, sub: `${stats.receivedMessages} recebidas`, icon: Send, color: 'text-blue-600', bg: 'bg-blue-100', href: '/chat?view=todas' },
+    { name: 'Leads Ativos', value: safeStats.activeLeads, sub: `${safeStats.wonLeads} ganhos, ${safeStats.lostLeads} perdidos`, icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-100', href: '/leads' },
+    { name: 'Conversas Abertas', value: safeStats.openConversations, sub: `${safeStats.closedConversations} finalizadas`, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100', href: '/chat?view=abertas' },
+    { name: 'Aguardando Cliente', value: safeStats.waitingConversations, sub: 'Fila de espera', icon: Clock, color: 'text-amber-600', bg: 'bg-amber-100', href: '/chat?view=fila' },
+    { name: 'Mensagens Enviadas', value: safeStats.sentMessages, sub: `${safeStats.receivedMessages} recebidas`, icon: Send, color: 'text-blue-600', bg: 'bg-blue-100', href: '/chat?view=todas' },
   ];
 
   if (isAdmin) {
-    cards.push({ name: 'Consumo de IA (Tokens)', value: stats.totalAiTokens, sub: `${stats.totalAiCalls} chamadas`, icon: Bot, color: 'text-rose-600', bg: 'bg-rose-100', href: '/settings/ai' });
+    cards.push({ name: 'Consumo de IA (Tokens)', value: safeStats.totalAiTokens, sub: `${safeStats.totalAiCalls} chamadas`, icon: Bot, color: 'text-rose-600', bg: 'bg-rose-100', href: '/settings/ai' });
   }
 
   const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#64748b'];
@@ -60,6 +77,12 @@ export default function Dashboard() {
         </p>
       </div>
 
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
+          <AlertTriangle size={16} /> Indicadores indisponiveis no momento. {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map(c => (
           <button
@@ -68,7 +91,7 @@ export default function Dashboard() {
             onClick={() => navigate(c.href)}
             className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-center gap-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-md hover:border-primary-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center \${c.bg}`}>
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${c.bg}`}>
               <c.icon className={c.color} size={24} />
             </div>
             <div>
@@ -85,7 +108,7 @@ export default function Dashboard() {
           <h2 className="text-sm font-bold text-slate-700 uppercase mb-4">Leads por Etapa (Funil)</h2>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.leadsByStage} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+              <BarChart data={safeStats.leadsByStage} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                 <XAxis type="number" />
                 <YAxis dataKey="stage_name" type="category" width={100} tick={{fontSize: 12}} />
@@ -103,7 +126,7 @@ export default function Dashboard() {
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie
-                    data={stats.aiUsageByAction}
+                    data={safeStats.aiUsageByAction}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
@@ -111,13 +134,13 @@ export default function Dashboard() {
                     fill="#8884d8"
                     dataKey="tokens"
                     nameKey="action"
-                    label={({ name, percent }) => `\${name} \${(percent * 100).toFixed(0)}%`}
+                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
                   >
-                    {stats.aiUsageByAction.map((entry: any, index: number) => (
-                      <Cell key={`cell-\${index}`} fill={COLORS[index % COLORS.length]} />
+                    {safeStats.aiUsageByAction.map((_entry: any, index: number) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
-                  <RechartsTooltip formatter={(value) => [`\${value} tokens`, 'Consumo']} />
+                  <RechartsTooltip formatter={(value) => [`${value} tokens`, 'Consumo']} />
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>

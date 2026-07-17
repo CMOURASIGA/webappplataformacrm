@@ -51,6 +51,7 @@ interface AppState {
   // Leads & Pipeline
   addLead: (lead: Omit<Lead, 'id' | 'createdAt' | 'updatedAt'>) => Promise<void>;
   updateLead: (id: string, updates: Partial<Lead>) => Promise<void>;
+  setLeadClassification: (id: string, classification: Lead['classification'], details?: Lead['classificationDetails'], classifiedAt?: string) => void;
   moveLead: (leadId: string, newStageId: string) => Promise<void>;
   
   // Chat
@@ -325,7 +326,8 @@ alert("Erro de inicialização: " + error.message);
               source_type: lead.sourceType || 'manual',
               stage_id: lead.stageId,
               pipeline_id: lead.pipelineId,
-              tags: lead.tags || []
+              tags: lead.tags || [],
+              classification: lead.classification
             })
           });
           
@@ -361,10 +363,22 @@ alert("Erro de inicialização: " + error.message);
             source_type: updates.sourceType,
             stage_id: updates.stageId,
             tags: updates.tags,
-            notes: updates.notes
+            notes: updates.notes,
+            classification: updates.classification
           })
         });
         set(state => ({ leads: state.leads.map(l => l.id === id ? { ...l, ...saved } : l) }));
+      },
+
+      setLeadClassification: (id, classification, details, classifiedAt) => {
+        set(state => ({
+          leads: state.leads.map(lead => lead.id === id ? {
+            ...lead,
+            classification,
+            classificationDetails: details,
+            classifiedAt: classifiedAt || new Date().toISOString(),
+          } : lead),
+        }));
       },
 
       moveLead: async (leadId, newStageId) => {

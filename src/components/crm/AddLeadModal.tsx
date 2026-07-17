@@ -25,6 +25,7 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
   const [source, setSource] = useState('Cadastro manual');
+  const [classification, setClassification] = useState<NonNullable<Lead['classification']> | ''>('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -35,6 +36,7 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
     setEmail(lead?.email || '');
     setCompany(lead?.company || '');
     setSource(lead?.source || 'Cadastro manual');
+    setClassification(lead?.classification || '');
     setError('');
   }, [isOpen, lead]);
 
@@ -52,7 +54,15 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
     setSaving(true);
     setError('');
     try {
-      const values = { name: name.trim(), phone: phone.trim(), email: email.trim(), company: company.trim(), source, sourceType: automaticSource ? 'automatic' as const : 'manual' as const };
+      const values = {
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        company: company.trim(),
+        source,
+        sourceType: automaticSource ? 'automatic' as const : 'manual' as const,
+        classification: classification || null,
+      };
       if (lead) {
         await updateLead(lead.id, values);
       } else {
@@ -80,6 +90,20 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
           <div><label className="block text-sm font-bold text-slate-700 mb-1">WhatsApp / telefone *</label><Input required value={phone} onChange={e => setPhone(e.target.value)} /></div>
           <div><label className="block text-sm font-bold text-slate-700 mb-1">E-mail</label><Input type="email" value={email} onChange={e => setEmail(e.target.value)} /></div>
           <div><label className="block text-sm font-bold text-slate-700 mb-1">Empresa</label><Input value={company} onChange={e => setCompany(e.target.value)} /></div>
+          <div>
+            <label className="block text-sm font-bold text-slate-700 mb-1">Classificacao do lead</label>
+            <select
+              value={classification}
+              onChange={e => setClassification(e.target.value as NonNullable<Lead['classification']> | '')}
+              className="w-full h-10 px-3 rounded-md border border-slate-300 text-sm"
+            >
+              <option value="">Nao classificado</option>
+              <option value="frio">Frio</option>
+              <option value="morno">Morno</option>
+              <option value="quente">Quente</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1">Pode ser definida manualmente ou atualizada pela classificacao de IA na conversa.</p>
+          </div>
           <div>
             <label className="block text-sm font-bold text-slate-700 mb-1">Origem informada</label>
             <select value={source} onChange={e => setSource(e.target.value)} disabled={automaticSource} className="w-full h-10 px-3 rounded-md border border-slate-300 text-sm disabled:bg-slate-100">

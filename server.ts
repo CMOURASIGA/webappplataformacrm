@@ -630,6 +630,34 @@ app.delete('/api/stages/:id', authenticate, async (req: any, res: any) => {
 });
 
 // Leads
+function parseJsonObject(value: unknown) {
+  if (!value || typeof value !== 'string') return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function formatLead(lead: any) {
+  return {
+    ...lead,
+    tenantId: lead.tenant_id,
+    stageId: lead.stage_id,
+    pipelineId: lead.pipeline_id,
+    sourceType: lead.source_type,
+    sourceCampaign: lead.source_campaign,
+    sourcePage: lead.source_page,
+    sourceCapturedAt: lead.source_captured_at,
+    classificationDetails: parseJsonObject(lead.classification_details),
+    classifiedAt: lead.classified_at,
+    classifiedBy: lead.classified_by,
+    createdAt: lead.created_at,
+    updatedAt: lead.updated_at,
+    tags: JSON.parse(lead.tags || '[]')
+  };
+}
+
 app.get('/api/leads', authenticate, (req: any, res: any) => {
   const { tenantId, role, id: userId } = req.user;
   
@@ -649,59 +677,43 @@ app.get('/api/leads', authenticate, (req: any, res: any) => {
     `).all(tenantId, userId, userId, userId);
   }
   
-  res.json(leads.map((l: any) => ({
-    ...l,
-    tenantId: l.tenant_id,
-    stageId: l.stage_id,
-    pipelineId: l.pipeline_id,
-    sourceType: l.source_type,
-    sourceCampaign: l.source_campaign,
-    sourcePage: l.source_page,
-    sourceCapturedAt: l.source_captured_at,
-    createdAt: l.created_at,
-    updatedAt: l.updated_at,
-    tags: JSON.parse(l.tags || '[]')
-  })));
+  res.json(leads.map(formatLead));
 });
 
 app.post('/api/leads', authenticate, async (req: any, res: any) => {
-  const { tenantId } = req.user;
-  const { name, phone, email, company, source, source_type = 'manual', stage_id, pipeline_id, tags = [] } = req.body;
+  const { tenantId, id: userId } = req.user;
+  const { name, phone, email, company, source, source_type = 'manual', stage_id, pipeline_id, tags = [], classification } = req.body;
   if (!name?.trim() || !phone?.trim()) return res.status(400).json({ error: 'Nome e telefone são obrigatórios' });
   
+  const normalizedClassification = classification ? String(classification).toLowerCase() : null;
+  if (normalizedClassification && !['frio', 'morno', 'quente'].includes(normalizedClassification)) {
+    return res.status(400).json({ error: 'Classificacao invalida' });
+  }
+
   const id = Math.random().toString(36).substring(2, 9);
   db.prepare(`
-    INSERT INTO leads (id, tenant_id, name, phone, email, company, source, source_type, stage_id, pipeline_id, tags)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, tenantId, name.trim(), phone.trim(), email || null, company || null, source || 'Manual', source_type, stage_id, pipeline_id, JSON.stringify(tags));
+    INSERT INTO leads (id, tenant_id, name, phone, email, company, source, source_type, stage_id, pipeline_id, tags, classification, classified_at, classified_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CASE WHEN ? IS NULL THEN NULL ELSE CURRENT_TIMESTAMP END, ?)
+  `).run(id, tenantId, name.trim(), phone.trim(), email || null, company || null, source || 'Manual', source_type, stage_id, pipeline_id, JSON.stringify(tags), normalizedClassification, normalizedClassification, userId);
   db.prepare('INSERT INTO lead_source_history (id, tenant_id, lead_id, source, source_type) VALUES (?, ?, ?, ?, ?)')
     .run(crypto.randomUUID(), tenantId, id, source || 'Manual', source_type);
   
   const newLead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id) as any;
   await commitDbChanges();
-  res.json({
-    ...newLead,
-    tenantId: newLead.tenant_id,
-    stageId: newLead.stage_id,
-    pipelineId: newLead.pipeline_id,
-    sourceType: newLead.source_type,
-    createdAt: newLead.created_at,
-    updatedAt: newLead.updated_at,
-    tags: JSON.parse(newLead.tags || '[]')
-  });
+  res.json(formatLead(newLead));
 });
 
 app.patch('/api/leads/:id', authenticate, async (req: any, res: any) => {
   const { tenantId, role, id: userId } = req.user;
   const { id } = req.params;
-  const { name, phone, email, company, source, source_type, stage_id, tags, notes } = req.body;
+  const { name, phone, email, company, source, source_type, stage_id, tags, notes, classification } = req.body;
   
   // Verify permissions
   let lead;
   if (role === 'admin' || role === 'master') {
-    lead = db.prepare('SELECT id FROM leads WHERE id = ? AND tenant_id = ?').get(id, tenantId);
+    lead = db.prepare('SELECT id, classification FROM leads WHERE id = ? AND tenant_id = ?').get(id, tenantId) as any;
   } else {
-    lead = db.prepare('SELECT id FROM leads WHERE id = ? AND tenant_id = ? AND (assigned_to = ? OR owner_user_id = ?)').get(id, tenantId, userId, userId);
+    lead = db.prepare('SELECT id, classification FROM leads WHERE id = ? AND tenant_id = ? AND (assigned_to = ? OR owner_user_id = ?)').get(id, tenantId, userId, userId) as any;
   }
   
   if (!lead) return res.status(404).json({ error: 'Not found or unauthorized' });
@@ -716,6 +728,20 @@ app.patch('/api/leads/:id', authenticate, async (req: any, res: any) => {
   if (tags !== undefined) {
     db.prepare('UPDATE leads SET tags = ? WHERE id = ? AND tenant_id = ?').run(JSON.stringify(tags), id, tenantId);
   }
+  if (classification !== undefined) {
+    const normalizedClassification = classification ? String(classification).toLowerCase() : null;
+    if (normalizedClassification && !['frio', 'morno', 'quente'].includes(normalizedClassification)) {
+      return res.status(400).json({ error: 'Classificacao invalida' });
+    }
+    if (normalizedClassification !== lead.classification) {
+      db.prepare(`
+        UPDATE leads
+        SET classification = ?, classification_details = NULL,
+            classified_at = CURRENT_TIMESTAMP, classified_by = ?, updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND tenant_id = ?
+      `).run(normalizedClassification, userId, id, tenantId);
+    }
+  }
   const fields: Array<[string, unknown]> = [['name', name], ['phone', phone], ['email', email], ['company', company], ['notes', notes]];
   for (const [field, value] of fields) {
     if (value !== undefined) db.prepare(`UPDATE leads SET ${field} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND tenant_id = ?`).run(value || null, id, tenantId);
@@ -727,7 +753,7 @@ app.patch('/api/leads/:id', authenticate, async (req: any, res: any) => {
   }
   await commitDbChanges();
   const saved = db.prepare('SELECT * FROM leads WHERE id = ? AND tenant_id = ?').get(id, tenantId) as any;
-  res.json({ ...saved, tenantId: saved.tenant_id, stageId: saved.stage_id, pipelineId: saved.pipeline_id, sourceType: saved.source_type, sourceCampaign: saved.source_campaign, sourcePage: saved.source_page, sourceCapturedAt: saved.source_captured_at, createdAt: saved.created_at, updatedAt: saved.updated_at, tags: JSON.parse(saved.tags || '[]') });
+  res.json(formatLead(saved));
 });
 
 app.get('/api/leads/:id/source-history', authenticate, (req: any, res: any) => {
@@ -1237,23 +1263,33 @@ Mensagens: ${JSON.stringify(messages)}
     await commitDbChanges();
     res.json(parsed);
   } catch (err: any) {
+    console.error('AI summarize conversation failed', { tenantId, userId, conversationId, error: err?.message });
     res.status(500).json({ error: err.message });
   }
 });
 
 app.post('/api/ai/classify-lead', authenticate, async (req: any, res: any) => {
-  const { tenantId, id: userId } = req.user;
+  const { tenantId, id: userId, role } = req.user;
   const { leadId } = req.body;
 
   try {
     const settings = await ensureTenantCanUseAi(tenantId);
 
-    const lead = db.prepare('SELECT * FROM leads WHERE id = ? AND tenant_id = ?').get(leadId, tenantId) as any;
+    const lead = role === 'admin' || role === 'master'
+      ? db.prepare('SELECT * FROM leads WHERE id = ? AND tenant_id = ?').get(leadId, tenantId) as any
+      : db.prepare(`
+          SELECT DISTINCT l.* FROM leads l
+          LEFT JOIN conversations c ON c.lead_id = l.id AND c.tenant_id = l.tenant_id
+          WHERE l.id = ? AND l.tenant_id = ? AND (
+            l.assigned_to = ? OR l.owner_user_id = ? OR c.assigned_to = ? OR
+            c.assigned_to IS NULL OR c.status IN ('new', 'unassigned')
+          )
+        `).get(leadId, tenantId, userId, userId, userId) as any;
     if (!lead) {
       return res.status(404).json({ error: 'Lead não encontrado' });
     }
 
-    const conversations = db.prepare('SELECT id FROM conversations WHERE lead_id = ?').all(leadId);
+    const conversations = db.prepare('SELECT id FROM conversations WHERE lead_id = ? AND tenant_id = ?').all(leadId, tenantId);
     let allMessages: any[] = [];
     
     for (const conv of conversations) {
@@ -1292,6 +1328,19 @@ Mensagens: ${JSON.stringify(allMessages)}
       parsed = { resumo_comercial: ai.text };
     }
 
+    const temperature = String(parsed.temperatura || '').toLowerCase();
+    if (!['frio', 'morno', 'quente'].includes(temperature)) {
+      parsed.temperatura = 'morno';
+    }
+    const classification = parsed.temperatura as 'frio' | 'morno' | 'quente';
+
+    db.prepare(`
+      UPDATE leads
+      SET classification = ?, classification_details = ?, classified_at = CURRENT_TIMESTAMP,
+          classified_by = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND tenant_id = ?
+    `).run(classification, JSON.stringify(parsed), userId, leadId, tenantId);
+
     const usage = (ai.usage as any) || {};
     const inputTokens = usage.prompt_tokens || 0;
     const outputTokens = usage.completion_tokens || 0;
@@ -1305,8 +1354,17 @@ Mensagens: ${JSON.stringify(allMessages)}
     `).run(logId, tenantId, userId, leadId, 'classify_lead', ai.model, inputTokens, outputTokens, totalTokens, 'success');
 
     await commitDbChanges();
-    res.json(parsed);
+    const savedClassification = db.prepare(
+      'SELECT classification, classification_details, classified_at FROM leads WHERE id = ? AND tenant_id = ?'
+    ).get(leadId, tenantId) as any;
+    res.json({
+      ...parsed,
+      classification: savedClassification.classification,
+      classificationDetails: parseJsonObject(savedClassification.classification_details),
+      classifiedAt: savedClassification.classified_at,
+    });
   } catch (err: any) {
+    console.error('AI classify lead failed', { tenantId, userId, leadId, error: err?.message });
     res.status(500).json({ error: err.message });
   }
 });

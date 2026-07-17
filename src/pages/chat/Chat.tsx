@@ -19,6 +19,17 @@ function textToHtml(value: string) {
   );
 }
 
+function getAiErrorMessage(error: unknown, action: string) {
+  const message = error instanceof Error ? error.message : '';
+  if (/nao habilitada|nÃ£o habilitada/i.test(message)) {
+    return `Nao foi possivel ${action}: a IA nao esta habilitada para este cliente.`;
+  }
+  if (/limite mensal/i.test(message)) {
+    return `Nao foi possivel ${action}: o limite mensal de IA foi atingido.`;
+  }
+  return `Nao foi possivel ${action}. Verifique a configuracao da IA e tente novamente.`;
+}
+
 export default function Chat() {
   const [searchParams] = useSearchParams();
   const [filter, setFilter] = useState<'minhas' | 'fila' | 'todas' | 'abertas'>('minhas');
@@ -37,6 +48,7 @@ export default function Chat() {
   const addConversation = useStore(state => state.addConversation);
   const moveLead = useStore(state => state.moveLead);
   const fetchMessages = useStore(state => state.fetchMessages);
+  const setLeadClassification = useStore(state => state.setLeadClassification);
 
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -70,6 +82,7 @@ export default function Chat() {
   const handleSummarize = async () => {
     if (!activeConversation) return;
     setIsAiLoading(true);
+    setOperationError('');
     try {
       const data = await fetchApi('/ai/summarize-conversation', {
         method: 'POST',
@@ -77,8 +90,8 @@ export default function Chat() {
       });
       setAiSummary(data);
     } catch (err) {
-      console.error(err);
-      alert('Erro ao resumir conversa.');
+      console.error('Summarize conversation failed:', err);
+      setOperationError(getAiErrorMessage(err, 'resumir a conversa'));
     } finally {
       setIsAiLoading(false);
     }
@@ -87,15 +100,17 @@ export default function Chat() {
   const handleClassify = async () => {
     if (!activeLead) return;
     setIsAiLoading(true);
+    setOperationError('');
     try {
       const data = await fetchApi('/ai/classify-lead', {
         method: 'POST',
         body: JSON.stringify({ leadId: activeLead.id }),
       });
       setAiClassification(data);
+      setLeadClassification(activeLead.id, data.classification, data.classificationDetails || data, data.classifiedAt);
     } catch (err) {
-      console.error(err);
-      alert('Erro ao classificar lead.');
+      console.error('Classify lead failed:', err);
+      setOperationError(getAiErrorMessage(err, 'classificar o lead'));
     } finally {
       setIsAiLoading(false);
     }
@@ -120,6 +135,12 @@ export default function Chat() {
   const activePipeline = activeLead ? pipelines.find(p => p.id === activeLead.pipelineId) : null;
   
   const activeMessages = activeConversation ? messages.filter(m => m.conversationId === activeConversation.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
+
+  useEffect(() => {
+    setAiSummary(null);
+    setAiClassification(activeLead?.classificationDetails || null);
+    setOperationError('');
+  }, [activeLead?.id]);
 
   useEffect(() => {
     if (activeConversation && (canViewAll || activeConversation.assignedTo === currentUser?.id)) {
@@ -254,6 +275,11 @@ export default function Chat() {
                 <div>
                   <div className="font-bold text-sm text-slate-800">{activeLead.name}</div>
                   <div className="text-[11px] text-emerald-600 font-medium">Online no WhatsApp</div>
+                  {activeLead.classification && (
+                    <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
+                      Classificacao: <span className="text-primary-700">{activeLead.classification}</span>
+                    </div>
+                  )}
                 </div>
                 
                 {activePipeline && (

@@ -159,6 +159,25 @@ function applySchemaAndSeed() {
     } catch {}
   }
 
+  const leadClassificationColumns = [
+    "ALTER TABLE leads ADD COLUMN classification TEXT",
+    "ALTER TABLE leads ADD COLUMN classification_details TEXT",
+    "ALTER TABLE leads ADD COLUMN classified_at DATETIME",
+    "ALTER TABLE leads ADD COLUMN classified_by TEXT",
+  ];
+
+  for (const statement of leadClassificationColumns) {
+    try {
+      db.exec(statement);
+      changed = true;
+    } catch {}
+  }
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_leads_tenant_classification
+      ON leads(tenant_id, classification);
+  `);
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS lead_source_history (
       id TEXT PRIMARY KEY,

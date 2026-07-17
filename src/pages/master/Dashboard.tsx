@@ -1,32 +1,48 @@
 import React, { useEffect, useState } from 'react';
 import { fetchApi } from '../../lib/api';
-import { Building2, Users, MessageSquare, Database, Bot, Zap, ArrowRight, BarChart } from 'lucide-react';
-import { useStore } from '../../store';
+import { AlertTriangle, BarChart, Bot, Building2, Database, MessageSquare, Users, Zap } from 'lucide-react';
 
 export default function MasterDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     fetchApi('/dashboard/master')
-      .then(data => {
-        setStats(data);
-        setLoading(false);
+      .then(data => setStats(data))
+      .catch(err => {
+        console.error('Master dashboard load failed:', err);
+        setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os indicadores.');
       })
-      .catch(console.error);
+      .finally(() => setLoading(false));
   }, []);
 
   if (loading) {
     return <div className="flex justify-center p-8"><div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div></div>;
   }
 
+  const numberValue = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
+  const safeStats = {
+    totalTenants: numberValue(stats?.totalTenants),
+    activeTenants: numberValue(stats?.activeTenants),
+    totalUsers: numberValue(stats?.totalUsers),
+    totalLeads: numberValue(stats?.totalLeads),
+    totalConversations: numberValue(stats?.totalConversations),
+    totalMessages: numberValue(stats?.totalMessages),
+    sentMessages: numberValue(stats?.sentMessages),
+    receivedMessages: numberValue(stats?.receivedMessages),
+    totalAiCalls: numberValue(stats?.totalAiCalls),
+    totalAiTokens: numberValue(stats?.totalAiTokens),
+    clientsUsage: Array.isArray(stats?.clientsUsage) ? stats.clientsUsage : [],
+  };
+
   const cards = [
-    { name: 'Total de Clientes', value: stats.totalTenants, sub: `\${stats.activeTenants} ativos`, icon: Building2, color: 'text-blue-600', bg: 'bg-blue-100' },
-    { name: 'Total de Usuários', value: stats.totalUsers, sub: 'Na plataforma', icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-100' },
-    { name: 'Leads Gerados', value: stats.totalLeads, sub: 'Todos os clientes', icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-100' },
-    { name: 'Conversas', value: stats.totalConversations, sub: 'Total aberto', icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100' },
-    { name: 'Mensagens Trocadas', value: stats.totalMessages, sub: `\${stats.sentMessages} env / \${stats.receivedMessages} rec`, icon: Zap, color: 'text-amber-600', bg: 'bg-amber-100' },
-    { name: 'Chamadas de IA', value: stats.totalAiCalls, sub: `\${stats.totalAiTokens} tokens`, icon: Bot, color: 'text-rose-600', bg: 'bg-rose-100' },
+    { name: 'Total de Clientes', value: safeStats.totalTenants, sub: `${safeStats.activeTenants} ativos`, icon: Building2, color: 'text-blue-600', bg: 'bg-blue-100' },
+    { name: 'Total de Usuarios', value: safeStats.totalUsers, sub: 'Na plataforma', icon: Users, color: 'text-indigo-600', bg: 'bg-indigo-100' },
+    { name: 'Leads Gerados', value: safeStats.totalLeads, sub: 'Todos os clientes', icon: Database, color: 'text-emerald-600', bg: 'bg-emerald-100' },
+    { name: 'Conversas', value: safeStats.totalConversations, sub: 'Total aberto', icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-100' },
+    { name: 'Mensagens Trocadas', value: safeStats.totalMessages, sub: `${safeStats.sentMessages} env / ${safeStats.receivedMessages} rec`, icon: Zap, color: 'text-amber-600', bg: 'bg-amber-100' },
+    { name: 'Chamadas de IA', value: safeStats.totalAiCalls, sub: `${safeStats.totalAiTokens} tokens`, icon: Bot, color: 'text-rose-600', bg: 'bg-rose-100' },
   ];
 
   return (
@@ -36,19 +52,25 @@ export default function MasterDashboard() {
           <BarChart className="text-primary-600" />
           Painel master
         </h1>
-        <p className="text-sm text-slate-500">Visão executiva de toda a plataforma SaaS</p>
+        <p className="text-sm text-slate-500">Visao executiva de toda a plataforma SaaS</p>
       </div>
 
+      {error && (
+        <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800" role="alert">
+          <AlertTriangle size={16} /> Indicadores indisponiveis no momento. {error}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {cards.map(c => (
-          <div key={c.name} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
-            <div className={`w-12 h-12 rounded-lg flex items-center justify-center \${c.bg}`}>
-              <c.icon className={c.color} size={24} />
+        {cards.map(card => (
+          <div key={card.name} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex items-center gap-4">
+            <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${card.bg}`}>
+              <card.icon className={card.color} size={24} />
             </div>
             <div>
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">{c.name}</div>
-              <div className="text-2xl font-black text-slate-800">{c.value.toLocaleString()}</div>
-              <div className="text-xs text-slate-400 font-medium">{c.sub}</div>
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">{card.name}</div>
+              <div className="text-2xl font-black text-slate-800">{card.value.toLocaleString()}</div>
+              <div className="text-xs text-slate-400 font-medium">{card.sub}</div>
             </div>
           </div>
         ))}
@@ -58,29 +80,31 @@ export default function MasterDashboard() {
         <div className="px-6 py-4 border-b border-slate-100 bg-slate-50">
           <h2 className="font-bold text-slate-700">Top Clientes por Volume</h2>
         </div>
-        <table className="w-full text-sm text-left">
-          <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
-            <tr>
-              <th className="px-6 py-3 font-semibold">Cliente</th>
-              <th className="px-6 py-3 font-semibold text-right">Leads</th>
-              <th className="px-6 py-3 font-semibold text-right">Conversas</th>
-              <th className="px-6 py-3 font-semibold text-right">Tokens IA</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-slate-100">
-            {stats.clientsUsage?.map((c: any, i: number) => (
-              <tr key={i} className="hover:bg-slate-50">
-                <td className="px-6 py-4 font-medium text-slate-800">{c.name}</td>
-                <td className="px-6 py-4 text-right text-slate-600">{c.leads_count.toLocaleString()}</td>
-                <td className="px-6 py-4 text-right text-slate-600">{c.conv_count.toLocaleString()}</td>
-                <td className="px-6 py-4 text-right text-slate-600">{c.ai_tokens.toLocaleString()}</td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-left">
+            <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-100">
+              <tr>
+                <th className="px-6 py-3 font-semibold">Cliente</th>
+                <th className="px-6 py-3 font-semibold text-right">Leads</th>
+                <th className="px-6 py-3 font-semibold text-right">Conversas</th>
+                <th className="px-6 py-3 font-semibold text-right">Tokens IA</th>
               </tr>
-            ))}
-            {(!stats.clientsUsage || stats.clientsUsage.length === 0) && (
-              <tr><td colSpan={4} className="text-center py-6 text-slate-400">Nenhum dado encontrado</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {safeStats.clientsUsage.map((client: any, index: number) => (
+                <tr key={index} className="hover:bg-slate-50">
+                  <td className="px-6 py-4 font-medium text-slate-800">{client.name}</td>
+                  <td className="px-6 py-4 text-right text-slate-600">{numberValue(client.leads_count).toLocaleString()}</td>
+                  <td className="px-6 py-4 text-right text-slate-600">{numberValue(client.conv_count).toLocaleString()}</td>
+                  <td className="px-6 py-4 text-right text-slate-600">{numberValue(client.ai_tokens).toLocaleString()}</td>
+                </tr>
+              ))}
+              {safeStats.clientsUsage.length === 0 && (
+                <tr><td colSpan={4} className="text-center py-6 text-slate-400">Nenhum dado encontrado</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

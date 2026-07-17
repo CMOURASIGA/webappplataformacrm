@@ -59,6 +59,10 @@ export interface Lead {
   sourceCampaign?: string;
   sourcePage?: string;
   sourceCapturedAt?: string;
+  classification?: 'frio' | 'morno' | 'quente' | null;
+  classificationDetails?: LeadClassificationDetails | null;
+  classifiedAt?: string;
+  classifiedBy?: string;
   status: 'new' | 'in_progress' | 'negotiation' | 'waiting' | 'won' | 'lost' | 'archived';
   assignedTo?: string; // userId
   stageId: string;
@@ -67,6 +71,15 @@ export interface Lead {
   updatedAt: string;
   notes: string;
   tags?: string[];
+}
+
+export interface LeadClassificationDetails {
+  intencao?: string;
+  temperatura?: 'frio' | 'morno' | 'quente';
+  prioridade?: string;
+  sentimento?: string;
+  resumo_comercial?: string;
+  proxima_acao?: string;
 }
 
 export interface Message {
