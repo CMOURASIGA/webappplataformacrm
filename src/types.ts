@@ -71,6 +71,40 @@ export interface Lead {
   updatedAt: string;
   notes: string;
   tags?: string[];
+  attentionSince?: string;
+  attachments?: LeadAttachment[];
+  history?: LeadHistoryEntry[];
+}
+
+export interface LeadAttachment {
+  id: string;
+  name: string;
+  type: string;
+  size: number;
+  createdAt: string;
+}
+
+export interface LeadHistoryEntry {
+  id: string;
+  type: 'ai_summary' | 'note' | 'automation' | 'stage_change';
+  title: string;
+  content: string;
+  createdAt: string;
+  createdBy?: string;
+}
+
+export interface AutomationRule {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string;
+  enabled: boolean;
+  trigger: 'ai_summary' | 'stage_idle' | 'new_lead' | 'classification';
+  delayHours?: number;
+  action: 'save_history' | 'attention_tag' | 'move_stage' | 'assign_user';
+  targetStageId?: string;
+  targetUserId?: string;
+  lastRunAt?: string;
 }
 
 export interface LeadClassificationDetails {
