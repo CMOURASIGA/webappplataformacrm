@@ -1,4 +1,28 @@
-# SaaS CRM
+# Consult Flow CRM, MVP de demonstração
+
+## Estratégia das branches
+
+- `develop`: desenvolvimento e validação.
+- `mvp`: versão aprovada para demonstração.
+- `cliente-base`: base que receberá persistência em nuvem e personalizações contratadas.
+
+## Funcionamento do MVP
+
+O frontend opera com dados demonstrativos em `localStorage` e memória do navegador. Alterações feitas durante a navegação permitem demonstrar o produto, mas a história comercial original é restaurada quando a aplicação é recarregada.
+
+O MVP inclui dashboard, leads, Kanban, conversas, histórico de atendimento, anexos vinculados ao lead, usuários com três perfis e automações parametrizáveis.
+
+Os dados comerciais não dependem de banco de dados no modo demonstrativo. A IA é a única operação que passa pelo servidor, para que a chave nunca seja exposta no navegador.
+
+## Variáveis da Vercel
+
+Obrigatória para as ações de IA:
+
+```env
+OPENAI_API_KEY=sk-...
+```
+
+O servidor também aceita `OPENAI_DEFAULT_MODEL`, usando `gpt-4o-mini` por padrão. As variáveis legadas `JWT_SECRET` e `TOKEN_ENCRYPTION_KEY` continuam necessárias enquanto os endpoints antigos de banco e integrações permanecerem no projeto.
 
 ## Como testar as funcionalidades de Inteligência Artificial:
 
