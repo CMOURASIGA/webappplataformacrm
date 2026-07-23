@@ -1,95 +1,80 @@
-import React, { useEffect, useState } from 'react';
-import { Users as UsersIcon, Plus, UserX, UserCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { Pencil, Plus, Users as UsersIcon, X } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { fetchApi } from '../../lib/api';
+import { useStore } from '../../store';
+import type { Role, User } from '../../types';
+
+const emptyForm = { name: '', email: '', password: '', role: 'user' as Role };
 
 export default function Users() {
-  const [users, setUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
+  const currentUser = useStore(state => state.currentUser);
+  const users = useStore(state => state.users);
+  const addUser = useStore(state => state.addUser);
+  const updateUser = useStore(state => state.updateUser);
+  const [form, setForm] = useState(emptyForm);
+  const [editing, setEditing] = useState<User | null>(null);
+  const [open, setOpen] = useState(false);
+  const tenantId = currentUser?.role === 'master' ? useStore.getState().activeTenantId : currentUser?.tenantId;
+  const visibleUsers = users.filter(user => currentUser?.role === 'master' || user.tenantId === tenantId);
 
-  useEffect(() => {
-    loadUsers();
-  }, []);
+  const submit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (editing) updateUser(editing.id, form);
+    else addUser({ ...form, tenantId: form.role === 'master' ? undefined : tenantId || 'tenant-1' });
+    setForm(emptyForm);
+    setEditing(null);
+    setOpen(false);
+  };
 
-  async function loadUsers() {
-    setLoading(true);
-    try {
-      const data = await fetchApi('/users');
-      setUsers(data);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function handleCreateUser() {
-    const name = prompt('Nome do usuário:');
-    if (!name) return;
-    const email = prompt('E-mail:');
-    if (!email) return;
-    const role = prompt('Papel (admin/user):', 'user');
-    if (!role) return;
-    const password = prompt('Senha (mínimo 6 caracteres):');
-    if (!password) return;
-
-    try {
-      await fetchApi('/users', {
-        method: 'POST',
-        body: JSON.stringify({ name, email, role, password })
-      });
-      loadUsers();
-    } catch (err) {
-      alert('Erro ao criar usuário');
-    }
-  }
+  const edit = (user: User) => {
+    setEditing(user);
+    setForm({ name: user.name, email: user.email, password: user.password || '', role: user.role });
+    setOpen(true);
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-            <UsersIcon className="text-primary-600" />
-            Usuários da Equipe
-          </h1>
-          <p className="text-slate-500 mt-1">Gerencie os atendentes e administradores do sistema.</p>
+          <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2"><UsersIcon className="text-primary-600" /> Gestão de usuários</h1>
+          <p className="text-slate-500 mt-1">Crie acessos e defina o perfil de cada pessoa.</p>
         </div>
-        <Button onClick={handleCreateUser}><Plus size={16} className="mr-2" /> Novo Usuário</Button>
+        <Button onClick={() => { setEditing(null); setForm(emptyForm); setOpen(true); }}><Plus size={16} className="mr-2" /> Novo usuário</Button>
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
         <table className="w-full text-left text-sm">
-          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500">
-            <tr>
-              <th className="p-4 font-medium">Nome</th>
-              <th className="p-4 font-medium">E-mail</th>
-              <th className="p-4 font-medium">Papel</th>
-              <th className="p-4 font-medium text-right">Ações</th>
-            </tr>
-          </thead>
+          <thead className="bg-slate-50 border-b border-slate-200 text-slate-500"><tr><th className="p-4">Nome</th><th className="p-4">E-mail</th><th className="p-4">Perfil</th><th className="p-4 text-right">Ações</th></tr></thead>
           <tbody className="divide-y divide-slate-100">
-            {loading ? (
-              <tr><td colSpan={4} className="p-8 text-center text-slate-400">Carregando...</td></tr>
-            ) : users.length === 0 ? (
-              <tr><td colSpan={4} className="p-8 text-center text-slate-400">Nenhum usuário encontrado.</td></tr>
-            ) : users.map(u => (
-              <tr key={u.id} className="hover:bg-slate-50">
-                <td className="p-4 font-medium text-slate-800">{u.name}</td>
-                <td className="p-4 text-slate-600">{u.email}</td>
-                <td className="p-4">
-                  <span className={`px-2 py-1 rounded text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                    {u.role === 'admin' ? 'Admin' : 'Atendente'}
-                  </span>
-                </td>
-                <td className="p-4 text-right">
-                  <Button variant="outline" size="sm">Editar</Button>
-                </td>
+            {visibleUsers.map(user => (
+              <tr key={user.id} className="hover:bg-slate-50">
+                <td className="p-4 font-semibold text-slate-800">{user.name}</td>
+                <td className="p-4 text-slate-600">{user.email}</td>
+                <td className="p-4"><span className="rounded-full bg-primary-50 px-2.5 py-1 text-xs font-semibold text-primary-700">{user.role === 'master' ? 'Master' : user.role === 'admin' ? 'Administrador cliente' : 'Atendente'}</span></td>
+                <td className="p-4 text-right"><Button variant="outline" size="sm" onClick={() => edit(user)}><Pencil size={14} className="mr-1" /> Editar</Button></td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
+          <form onSubmit={submit} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between"><h2 className="text-lg font-bold">{editing ? 'Editar usuário' : 'Novo usuário'}</h2><button type="button" onClick={() => setOpen(false)}><X /></button></div>
+            <Input required value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Nome completo" />
+            <Input required type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="E-mail" />
+            <Input required minLength={6} type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Senha, mínimo 6 caracteres" />
+            <select className="w-full rounded-md border border-slate-300 px-3 py-2" value={form.role} onChange={e => setForm({ ...form, role: e.target.value as Role })}>
+              {currentUser?.role === 'master' && <option value="master">Master</option>}
+              <option value="admin">Administrador cliente</option>
+              <option value="user">Atendente</option>
+            </select>
+            <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setOpen(false)}>Cancelar</Button><Button type="submit">Salvar usuário</Button></div>
+          </form>
+        </div>
+      )}
     </div>
   );
 }
