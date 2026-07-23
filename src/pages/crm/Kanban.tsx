@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { Phone, Mail, Plus, MessageCircle } from 'lucide-react';
+import { Phone, Plus, MessageCircle, AlertTriangle } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/Button';
 import { AddLeadModal } from '../../components/crm/AddLeadModal';
@@ -16,6 +17,8 @@ export default function Kanban() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [chatLeadId, setChatLeadId] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const idleRule = useStore(state => state.automations.find(rule => rule.trigger === 'stage_idle' && rule.enabled));
   
   if (!currentUser) return null;
 
@@ -42,7 +45,7 @@ export default function Kanban() {
         <h1 className="text-lg font-bold text-slate-700 uppercase tracking-tight">{pipeline.name} (Kanban)</h1>
         <div className="flex gap-4">
           <Button onClick={() => setIsModalOpen(true)} className="h-8 text-xs"><Plus size={14} className="mr-1" /> Adicionar lead</Button>
-          <button className="text-primary-600 text-xs font-bold hover:underline">Ver Todos</button>
+          <button onClick={() => navigate('/leads')} className="text-primary-600 text-xs font-bold hover:underline">Ver todos</button>
         </div>
       </div>
 
@@ -87,6 +90,9 @@ export default function Kanban() {
                                 </div>
                                 <p className="text-sm font-bold truncate text-slate-900 pr-5">{lead.name}</p>
                                 <p className="text-[11px] text-slate-500 mb-2">Origem: {lead.source}</p>
+                                {idleRule && lead.attentionSince && (Date.now() - new Date(lead.attentionSince).getTime()) / 3600000 >= (idleRule.delayHours || 24) && (
+                                  <div className="mb-2 flex items-center gap-1 rounded-md bg-amber-50 px-2 py-1 text-[10px] font-bold text-amber-700"><AlertTriangle size={11} /> Requer atenção, sem ação há mais de {idleRule.delayHours || 24}h</div>
+                                )}
                                 
                                 {lead.tags && lead.tags.length > 0 && (
                                   <div className="flex flex-wrap gap-1 mb-2">
