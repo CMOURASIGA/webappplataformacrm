@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
-import { fetchApi } from '../../lib/api';
 
 export default function AiSettings() {
   const [enabled, setEnabled] = useState(false);
@@ -11,43 +10,22 @@ export default function AiSettings() {
   const [businessRules, setBusinessRules] = useState('');
   const [monthlyTokenLimit, setMonthlyTokenLimit] = useState(100000);
   const [currentUsage, setCurrentUsage] = useState(0);
+  const [notice, setNotice] = useState('');
 
   useEffect(() => {
-    async function load() {
-      try {
-        const data = await fetchApi('/ai/settings');
-        setEnabled(Boolean(data.enabled));
-        setModel(data.model || '');
-        setTone(data.tone || 'profissional, claro e cordial');
-        setCompanyContext(data.company_context || '');
-        setBusinessRules(data.business_rules || '');
-        setMonthlyTokenLimit(data.monthly_token_limit || 100000);
-        setCurrentUsage(data.current_usage || 0);
-      } catch (err) {
-        console.error('Failed to load AI settings', err);
-      }
-    }
-    load();
+    const data = JSON.parse(localStorage.getItem('crm-ai-settings') || '{}');
+    setEnabled(data.enabled ?? true);
+    setModel(data.model || 'gpt-4o-mini');
+    setTone(data.tone || 'profissional, claro e cordial');
+    setCompanyContext(data.companyContext || 'Atendimento comercial da Horizonte Empreendimentos.');
+    setBusinessRules(data.businessRules || 'A IA sugere conteúdo, mas o atendente revisa antes do envio.');
+    setMonthlyTokenLimit(data.monthlyTokenLimit || 100000);
+    setCurrentUsage(data.currentUsage || 1842);
   }, []);
 
-  async function save() {
-    try {
-      await fetchApi('/ai/settings', {
-        method: 'PATCH',
-        body: JSON.stringify({
-          enabled,
-          model,
-          tone,
-          company_context: companyContext,
-          business_rules: businessRules,
-          monthly_token_limit: monthlyTokenLimit,
-        }),
-      });
-      alert('Configurações de IA salvas');
-    } catch (err) {
-      console.error('Failed to save AI settings', err);
-      alert('Erro ao salvar as configurações');
-    }
+  function save() {
+    localStorage.setItem('crm-ai-settings', JSON.stringify({ enabled, model, tone, companyContext, businessRules, monthlyTokenLimit, currentUsage }));
+    setNotice('Configurações salvas neste ambiente demonstrativo.');
   }
 
   return (
@@ -58,6 +36,8 @@ export default function AiSettings() {
       </div>
 
       <div className="bg-white rounded-xl p-6 shadow-sm border border-slate-200 space-y-5">
+        <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-800">A chave é lida com segurança da variável <strong>OPENAI_API_KEY</strong> configurada na Vercel. Ela não aparece e não é armazenada no navegador.</div>
+        {notice && <div role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">{notice}</div>}
         <label className="flex items-center gap-3">
           <input 
             type="checkbox" 
