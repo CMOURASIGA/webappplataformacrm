@@ -38,7 +38,7 @@ export default function App() {
           <Route path="leads" element={<LeadsList />} />
           <Route path="chat" element={<ErrorBoundary title="Não foi possível exibir as conversas"><Chat /></ErrorBoundary>} />
           <Route path="chat/quick-replies" element={<QuickReplies />} />
-          <Route path="internal-chat" element={<InternalChat />} />
+          <Route path="internal-chat" element={<ErrorBoundary title="Nao foi possivel exibir o chat interno"><InternalChat /></ErrorBoundary>} />
           <Route path="settings" element={<Settings />} />
           <Route path="users" element={<Users />} />
           <Route path="knowledge" element={<KnowledgeBase />} />

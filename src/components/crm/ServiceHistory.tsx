@@ -20,14 +20,21 @@ export interface ServiceRecord {
 
 export function ServiceHistory({ leadId, refreshKey = 0 }: { leadId: string; refreshKey?: number }) {
   const [records, setRecords] = useState<ServiceRecord[]>([]);
+  const [users, setUsers] = useState<any[]>([]);
   const [period, setPeriod] = useState('all');
+  const [attendantId, setAttendantId] = useState('');
   const [pending, setPending] = useState(false);
   const [nextAction, setNextAction] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    fetchApi('/users').then(setUsers).catch(() => setUsers([]));
+  }, []);
+
+  useEffect(() => {
     const query = new URLSearchParams({ period });
+    if (attendantId) query.set('attendantId', attendantId);
     if (pending) query.set('pending', 'true');
     if (nextAction) query.set('nextAction', 'true');
     setLoading(true); setError('');
@@ -43,6 +50,10 @@ export function ServiceHistory({ leadId, refreshKey = 0 }: { leadId: string; ref
         <Filter size={14} className="text-slate-400" />
         <select value={period} onChange={event => setPeriod(event.target.value)} className="h-8 rounded border border-slate-300 bg-white px-2 text-xs">
           <option value="all">Todos</option><option value="today">Hoje</option><option value="7days">Ultimos 7 dias</option>
+        </select>
+        <select value={attendantId} onChange={event => setAttendantId(event.target.value)} className="h-8 rounded border border-slate-300 bg-white px-2 text-xs">
+          <option value="">Todos os atendentes</option>
+          {users.map(user => <option key={user.id} value={user.id}>{user.name}</option>)}
         </select>
         <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={pending} onChange={event => setPending(event.target.checked)} /> Com pendencias</label>
         <label className="flex items-center gap-1.5 text-xs text-slate-600"><input type="checkbox" checked={nextAction} onChange={event => setNextAction(event.target.checked)} /> Com proxima acao</label>
