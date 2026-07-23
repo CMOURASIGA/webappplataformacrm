@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store';
-import { Download, Mail, Phone } from 'lucide-react';
+import { Download, FileText, History, Mail, Paperclip, Phone, Trash2, X } from 'lucide-react';
 import type { Lead } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { AddLeadModal } from '../../components/crm/AddLeadModal';
@@ -35,6 +35,9 @@ export default function LeadsList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>('all');
+  const [workspaceLeadId, setWorkspaceLeadId] = useState<string | null>(null);
+  const addLeadAttachment = useStore(state => state.addLeadAttachment);
+  const removeLeadAttachment = useStore(state => state.removeLeadAttachment);
 
   if (!currentUser) return null;
 
@@ -147,6 +150,7 @@ export default function LeadsList() {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <Button variant="ghost" size="sm" onClick={() => setWorkspaceLeadId(lead.id)}><Paperclip size={14} className="mr-1" /> Histórico e anexos</Button>
                   <Button variant="ghost" size="sm" onClick={() => { setEditingLead(lead); setIsModalOpen(true); }}>Editar ficha</Button>
                 </td>
               </tr>
@@ -162,6 +166,23 @@ export default function LeadsList() {
         </table>
       </div>
       <AddLeadModal isOpen={isModalOpen} lead={editingLead} onClose={() => { setIsModalOpen(false); setEditingLead(null); }} />
+      {workspaceLeadId && (() => {
+        const lead = leads.find(item => item.id === workspaceLeadId);
+        if (!lead) return null;
+        return <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40">
+          <div className="h-full w-full max-w-2xl overflow-y-auto bg-slate-50 p-6 shadow-2xl">
+            <div className="flex items-start justify-between"><div><h2 className="text-xl font-bold text-slate-800">{lead.name}</h2><p className="text-sm text-slate-500">Histórico consolidado e arquivos vinculados ao lead</p></div><button onClick={() => setWorkspaceLeadId(null)}><X /></button></div>
+            <section className="mt-6 rounded-xl border border-slate-200 bg-white p-5">
+              <div className="flex items-center justify-between"><h3 className="font-bold flex items-center gap-2"><Paperclip size={17} /> Anexos</h3><label className="cursor-pointer rounded-md bg-primary-600 px-3 py-2 text-xs font-bold text-white">Adicionar arquivo<input className="hidden" type="file" onChange={event => { const file = event.target.files?.[0]; if (file) addLeadAttachment(lead.id, file); event.currentTarget.value = ''; }} /></label></div>
+              <div className="mt-4 space-y-2">{(lead.attachments || []).map(file => <div key={file.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3"><div className="flex items-center gap-2"><FileText className="text-primary-500" size={18} /><div><p className="text-sm font-semibold">{file.name}</p><p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB, {new Date(file.createdAt).toLocaleDateString('pt-BR')}</p></div></div><button className="text-slate-400 hover:text-red-600" onClick={() => removeLeadAttachment(lead.id, file.id)}><Trash2 size={16} /></button></div>)}{!lead.attachments?.length && <p className="py-4 text-center text-sm text-slate-400">Nenhum arquivo vinculado.</p>}</div>
+            </section>
+            <section className="mt-4 rounded-xl border border-slate-200 bg-white p-5">
+              <h3 className="font-bold flex items-center gap-2"><History size={17} /> Histórico de atendimento</h3>
+              <div className="mt-4 space-y-3">{(lead.history || []).map(entry => <div key={entry.id} className="border-l-2 border-primary-300 pl-4"><div className="flex justify-between gap-3"><p className="text-sm font-bold text-slate-700">{entry.title}</p><span className="text-xs text-slate-400">{new Date(entry.createdAt).toLocaleString('pt-BR')}</span></div><p className="mt-1 text-sm text-slate-600">{entry.content}</p></div>)}{!lead.history?.length && <p className="py-4 text-center text-sm text-slate-400">O histórico será alimentado por resumos, notas e automações.</p>}</div>
+            </section>
+          </div>
+        </div>;
+      })()}
     </div>
   );
 }
