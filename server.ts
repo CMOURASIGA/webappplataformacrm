@@ -1105,6 +1105,49 @@ app.patch('/api/ai/settings', authenticate, async (req: any, res: any) => {
   res.json({ success: true });
 });
 
+// Endpoint seguro para o MVP localStorage. A chave nunca é enviada ao navegador:
+// ela é lida exclusivamente de OPENAI_API_KEY no ambiente do servidor/Vercel.
+app.post('/api/mvp/ai', async (req: any, res: any) => {
+  const { action, lead, messages = [] } = req.body || {};
+  if (!['suggest_reply', 'summarize', 'classify'].includes(action)) {
+    return res.status(400).json({ error: 'Ação de IA inválida' });
+  }
+  if (!process.env.OPENAI_API_KEY) {
+    return res.status(503).json({ error: 'OPENAI_API_KEY não configurada no ambiente da Vercel' });
+  }
+  try {
+    const common = `Você é um assistente de CRM comercial. Responda em português do Brasil. Não invente informações. Lead: ${JSON.stringify(lead || {})}. Conversa: ${JSON.stringify(messages)}`;
+    if (action === 'suggest_reply') {
+      const ai = await generateAiResponse({
+        system: 'Sugira uma resposta curta, humana e útil para o atendente. Retorne somente o texto que poderá ser revisado antes do envio.',
+        user: common,
+      });
+      return res.json({ suggestion: ai.text });
+    }
+    if (action === 'summarize') {
+      const ai = await generateAiResponse({
+        system: 'Resuma o atendimento. Retorne apenas JSON válido, sem markdown.',
+        user: `${common}\nFormato: {"resumo":"","pontos_importantes":[],"pendencias":[],"proxima_acao":"","sentimento":"positivo|neutro|negativo","temperatura":"frio|morno|quente"}`,
+        temperature: 0.2,
+      });
+      const clean = ai.text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+      return res.json(JSON.parse(clean));
+    }
+    const ai = await generateAiResponse({
+      system: 'Classifique o lead comercialmente. Retorne apenas JSON válido, sem markdown.',
+      user: `${common}\nFormato: {"intencao":"","temperatura":"frio|morno|quente","prioridade":"baixa|média|alta","sentimento":"positivo|neutro|negativo","resumo_comercial":"","proxima_acao":""}`,
+      temperature: 0.2,
+    });
+    const clean = ai.text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+    const parsed = JSON.parse(clean);
+    const classification = ['frio', 'morno', 'quente'].includes(parsed.temperatura) ? parsed.temperatura : 'morno';
+    return res.json({ ...parsed, classification, classificationDetails: parsed, classifiedAt: new Date().toISOString() });
+  } catch (err: any) {
+    console.error('MVP AI action failed', { action, error: err?.message });
+    return res.status(502).json({ error: 'Não foi possível concluir a ação de IA. Verifique a chave, o modelo e tente novamente.' });
+  }
+});
+
 app.post('/api/ai/suggest-reply', authenticate, async (req: any, res: any) => {
   const { tenantId, id: userId } = req.user;
   const { conversationId } = req.body;
