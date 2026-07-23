@@ -49,6 +49,7 @@ export default function Chat() {
   const moveLead = useStore(state => state.moveLead);
   const fetchMessages = useStore(state => state.fetchMessages);
   const setLeadClassification = useStore(state => state.setLeadClassification);
+  const addLeadHistory = useStore(state => state.addLeadHistory);
 
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -64,16 +65,16 @@ export default function Chat() {
     if (!activeConversation) return;
     setIsAiLoading(true);
     try {
-      const data = await fetchApi('/ai/suggest-reply', {
+      const data = await fetchApi('/mvp/ai', {
         method: 'POST',
-        body: JSON.stringify({ conversationId: activeConversation.id }),
+        body: JSON.stringify({ action: 'suggest_reply', lead: activeLead, messages: activeMessages }),
       });
       if (data.suggestion) {
         setText(text + (text ? '\n' : '') + data.suggestion);
       }
     } catch (err) {
       console.error(err);
-      alert('Erro ao gerar sugestão. Verifique se a IA está ativada e configurada.');
+      setOperationError(getAiErrorMessage(err, 'gerar uma sugestão'));
     } finally {
       setIsAiLoading(false);
     }
@@ -84,11 +85,19 @@ export default function Chat() {
     setIsAiLoading(true);
     setOperationError('');
     try {
-      const data = await fetchApi('/ai/summarize-conversation', {
+      const data = await fetchApi('/mvp/ai', {
         method: 'POST',
-        body: JSON.stringify({ conversationId: activeConversation.id }),
+        body: JSON.stringify({ action: 'summarize', lead: activeLead, messages: activeMessages }),
       });
       setAiSummary(data);
+      if (activeLead && useStore.getState().automations.find(rule => rule.trigger === 'ai_summary' && rule.enabled)) {
+        addLeadHistory(activeLead.id, {
+          type: 'ai_summary',
+          title: 'Resumo do atendimento',
+          content: [data.resumo, data.proxima_acao ? `Próxima ação: ${data.proxima_acao}` : ''].filter(Boolean).join(' '),
+          createdBy: currentUser?.id,
+        });
+      }
     } catch (err) {
       console.error('Summarize conversation failed:', err);
       setOperationError(getAiErrorMessage(err, 'resumir a conversa'));
@@ -102,9 +111,11 @@ export default function Chat() {
     setIsAiLoading(true);
     setOperationError('');
     try {
-      const data = await fetchApi('/ai/classify-lead', {
+      const conversation = tenantConversations.find(item => item.leadId === activeLead.id);
+      const history = conversation ? messages.filter(item => item.conversationId === conversation.id) : [];
+      const data = await fetchApi('/mvp/ai', {
         method: 'POST',
-        body: JSON.stringify({ leadId: activeLead.id }),
+        body: JSON.stringify({ action: 'classify', lead: activeLead, messages: history }),
       });
       setAiClassification(data);
       setLeadClassification(activeLead.id, data.classification, data.classificationDetails || data, data.classifiedAt);
