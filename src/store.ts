@@ -68,8 +68,10 @@ export const useStore = create<AppState>()(
       activeTenantId: localStorage.getItem('activeTenantId'),
 
       login: async (email, password = '') => {
-        const user = demoUsers.find(item => item.email.toLowerCase() === email.trim().toLowerCase() && item.password === password);
-        if (!user) {
+        const normalizedEmail = email.trim().toLowerCase();
+        const user = demoUsers.find(item => item.email.toLowerCase() === normalizedEmail);
+        const validDemoAccess = Boolean(user && password.length >= 6);
+        if (!user || !validDemoAccess) {
           set({ loginError: 'E-mail ou senha inválidos.' });
           throw new Error('E-mail ou senha inválidos.');
         }
