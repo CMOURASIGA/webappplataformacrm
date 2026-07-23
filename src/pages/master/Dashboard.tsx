@@ -1,25 +1,21 @@
-import React, { useEffect, useState } from 'react';
-import { fetchApi } from '../../lib/api';
+import React from 'react';
 import { AlertTriangle, BarChart, Bot, Building2, Database, MessageSquare, Users, Zap } from 'lucide-react';
+import { useStore } from '../../store';
 
 export default function MasterDashboard() {
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    fetchApi('/dashboard/master')
-      .then(data => setStats(data))
-      .catch(err => {
-        console.error('Master dashboard load failed:', err);
-        setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os indicadores.');
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  if (loading) {
-    return <div className="flex justify-center p-8"><div className="w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full animate-spin"></div></div>;
-  }
+  const tenants = useStore(state => state.tenants);
+  const users = useStore(state => state.users);
+  const leads = useStore(state => state.leads);
+  const conversations = useStore(state => state.conversations);
+  const messages = useStore(state => state.messages);
+  const error = '';
+  const stats = {
+    totalTenants: tenants.length, activeTenants: tenants.filter(t => t.status === 'active').length,
+    totalUsers: users.length, totalLeads: leads.length, totalConversations: conversations.length,
+    totalMessages: messages.length, sentMessages: messages.filter(m => m.senderId !== 'lead').length,
+    receivedMessages: messages.filter(m => m.senderId === 'lead').length, totalAiCalls: 12, totalAiTokens: 1842,
+    clientsUsage: tenants.map(t => ({ name: t.name, leads_count: leads.filter(l => l.tenantId === t.id).length, conv_count: conversations.filter(c => c.tenantId === t.id).length, ai_tokens: 1842 })),
+  };
 
   const numberValue = (value: unknown) => Number.isFinite(Number(value)) ? Number(value) : 0;
   const safeStats = {
