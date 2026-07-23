@@ -10,6 +10,8 @@ import {
   Building2,
   Trello,
   Smartphone,
+  Bot,
+  UserCog,
 } from "lucide-react";
 import { Sparkles, Book } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -123,6 +125,12 @@ export function AppLayout() {
           icon: <Settings size={16} />,
           adminOnly: true,
         },
+        {
+          name: "Automações",
+          href: "/settings/automations",
+          icon: <Bot size={16} />,
+          adminOnly: true,
+        },
       ],
     },
     {
@@ -132,6 +140,12 @@ export function AppLayout() {
           name: "Identidade visual",
           href: "/settings",
           icon: <Settings size={16} />,
+          adminOnly: true,
+        },
+        {
+          name: "Gestão de usuários",
+          href: "/users",
+          icon: <UserCog size={16} />,
           adminOnly: true,
         },
         {
@@ -288,8 +302,8 @@ export function AppLayout() {
             <h1 className="text-lg font-bold text-slate-800">
               {/* Optional header title or context could go here */}
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 text-xs font-semibold">
-              Online
+            <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold">
+              Ambiente demonstrativo
             </span>
             <div className="hidden sm:block border-l border-slate-200 pl-4"><span className="block text-[10px] font-bold uppercase text-slate-400">Usuário autenticado</span><span className="block text-sm font-semibold text-slate-700">{currentUser.name}</span></div>
             {tenant && <div className="hidden md:block border-l border-slate-200 pl-4"><span className="block text-[10px] font-bold uppercase text-slate-400">Cliente ativo</span><span className="block text-sm font-semibold text-slate-700">{tenant.name}</span></div>}
