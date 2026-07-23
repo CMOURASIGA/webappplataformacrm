@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore } from '../store';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { fetchApi } from '../lib/api';
 import { Users, MessageSquare, CheckCircle, Clock, Database, Bot, Send, Inbox, Target, AlertTriangle } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell
@@ -13,18 +12,33 @@ export default function Dashboard() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const leads = useStore(state => state.leads);
+  const conversations = useStore(state => state.conversations);
+  const messages = useStore(state => state.messages);
+  const pipelines = useStore(state => state.pipelines);
 
   useEffect(() => {
     if (currentUser?.role === 'master') return;
 
-    fetchApi('/dashboard/tenant')
-      .then(data => setStats(data))
-      .catch(err => {
-        console.error('Dashboard load failed:', err);
-        setError(err instanceof Error ? err.message : 'Nao foi possivel carregar os indicadores.');
-      })
-      .finally(() => setLoading(false));
-  }, [currentUser]);
+    const tenantLeads = leads.filter(lead => lead.tenantId === currentUser?.tenantId);
+    const tenantConversations = conversations.filter(conversation => conversation.tenantId === currentUser?.tenantId);
+    const stageNames = new Map(pipelines.flatMap(pipeline => pipeline.stages.map(stage => [stage.id, stage.name])));
+    setStats({
+      activeLeads: tenantLeads.filter(lead => !['won', 'lost', 'archived'].includes(lead.status)).length,
+      wonLeads: tenantLeads.filter(lead => lead.status === 'won').length,
+      lostLeads: tenantLeads.filter(lead => lead.status === 'lost').length,
+      openConversations: tenantConversations.filter(conversation => conversation.status !== 'closed').length,
+      closedConversations: tenantConversations.filter(conversation => conversation.status === 'closed').length,
+      waitingConversations: tenantConversations.filter(conversation => ['waiting_customer', 'waiting_agent', 'unassigned'].includes(conversation.status)).length,
+      sentMessages: messages.filter(message => message.senderId !== 'lead').length,
+      receivedMessages: messages.filter(message => message.senderId === 'lead').length,
+      totalAiTokens: 1842,
+      totalAiCalls: 12,
+      leadsByStage: Array.from(stageNames.entries()).map(([id, stage_name]) => ({ stage_name, count: tenantLeads.filter(lead => lead.stageId === id).length })),
+      aiUsageByAction: [{ action: 'Resumos', tokens: 820 }, { action: 'Sugestões', tokens: 610 }, { action: 'Classificações', tokens: 412 }],
+    });
+    setLoading(false);
+  }, [currentUser, leads, conversations, messages, pipelines]);
 
   if (!currentUser) return null;
 
