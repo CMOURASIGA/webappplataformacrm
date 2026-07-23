@@ -45,6 +45,14 @@ export default function Users() {
     }
   }
 
+  async function toggleImportPermission(user: any) {
+    await fetchApi(`/users/${user.id}/permissions`, {
+      method: 'PATCH',
+      body: JSON.stringify({ canImportLeads: !user.canImportLeads }),
+    });
+    await loadUsers();
+  }
+
   return (
     <div className="max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -65,14 +73,15 @@ export default function Users() {
               <th className="p-4 font-medium">Nome</th>
               <th className="p-4 font-medium">E-mail</th>
               <th className="p-4 font-medium">Papel</th>
+              <th className="p-4 font-medium">Importar leads</th>
               <th className="p-4 font-medium text-right">Ações</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={4} className="p-8 text-center text-slate-400">Carregando...</td></tr>
+              <tr><td colSpan={5} className="p-8 text-center text-slate-400">Carregando...</td></tr>
             ) : users.length === 0 ? (
-              <tr><td colSpan={4} className="p-8 text-center text-slate-400">Nenhum usuário encontrado.</td></tr>
+              <tr><td colSpan={5} className="p-8 text-center text-slate-400">Nenhum usuário encontrado.</td></tr>
             ) : users.map(u => (
               <tr key={u.id} className="hover:bg-slate-50">
                 <td className="p-4 font-medium text-slate-800">{u.name}</td>
@@ -81,6 +90,12 @@ export default function Users() {
                   <span className={`px-2 py-1 rounded text-xs font-medium ${u.role === 'admin' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
                     {u.role === 'admin' ? 'Admin' : 'Atendente'}
                   </span>
+                </td>
+                <td className="p-4">
+                  <label className="inline-flex items-center gap-2 text-xs font-medium text-slate-600">
+                    <input type="checkbox" checked={u.role === 'admin' || Boolean(u.canImportLeads)} disabled={u.role === 'admin'} onChange={() => toggleImportPermission(u)} />
+                    {u.role === 'admin' ? 'Permitido pelo papel' : u.canImportLeads ? 'Permitido' : 'Bloqueado'}
+                  </label>
                 </td>
                 <td className="p-4 text-right">
                   <Button variant="outline" size="sm">Editar</Button>

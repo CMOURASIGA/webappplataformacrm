@@ -21,6 +21,7 @@ import Users from './pages/admin/Users';
 import KnowledgeBase from './pages/settings/KnowledgeBase';
 import AiSettings from './pages/settings/AiSettings';
 import WhatsAppSettings from './pages/settings/WhatsAppSettings';
+import InternalChat from './pages/chat/InternalChat';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 export default function App() {
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="leads" element={<LeadsList />} />
           <Route path="chat" element={<ErrorBoundary title="Não foi possível exibir as conversas"><Chat /></ErrorBoundary>} />
           <Route path="chat/quick-replies" element={<QuickReplies />} />
+          <Route path="internal-chat" element={<InternalChat />} />
           <Route path="settings" element={<Settings />} />
           <Route path="users" element={<Users />} />
           <Route path="knowledge" element={<KnowledgeBase />} />

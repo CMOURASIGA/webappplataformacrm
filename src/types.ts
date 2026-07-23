@@ -6,6 +6,7 @@ export interface User {
   name: string;
   email: string;
   role: Role;
+  canImportLeads?: boolean;
   avatar?: string;
   password?: string; // Just for mockup login
 }

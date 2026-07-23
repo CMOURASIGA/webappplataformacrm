@@ -1,10 +1,10 @@
 const API_URL = '/api';
 
-function getHeaders() {
+export function getApiHeaders(includeContentType = true) {
   const token = localStorage.getItem('token');
   const activeTenantId = localStorage.getItem('activeTenantId');
   return {
-    'Content-Type': 'application/json',
+    ...(includeContentType ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(activeTenantId ? { 'X-Tenant-ID': activeTenantId } : {})
   };
@@ -14,7 +14,7 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const response = await fetch(`${API_URL}${endpoint}`, {
     ...options,
     headers: {
-      ...getHeaders(),
+      ...getApiHeaders(),
       ...options.headers
     }
   });
@@ -43,4 +43,16 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   }
   
   return response.json();
+}
+
+export async function fetchApiResponse(endpoint: string, options: RequestInit = {}) {
+  const response = await fetch(`${API_URL}${endpoint}`, {
+    ...options,
+    headers: { ...getApiHeaders(!(options.body instanceof FormData)), ...options.headers },
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `API Error (${response.status})`);
+  }
+  return response;
 }
