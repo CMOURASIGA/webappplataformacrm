@@ -1,13 +1,10 @@
-import React, { useEffect, useState } from 'react';
-import { fetchApi } from '../../lib/api';
-import { Activity, Sparkles, AlertCircle } from 'lucide-react';
+import React from 'react';
+import { Sparkles } from 'lucide-react';
+import { useStore } from '../../store';
 
 export default function AiUsage() {
-  const [usageData, setUsageData] = useState<any[]>([]);
-
-  useEffect(() => {
-    fetchApi('/master/ai-usage').then(setUsageData).catch(console.error);
-  }, []);
+  const tenants = useStore(state => state.tenants);
+  const usageData = tenants.map(tenant => ({ tenant_id: tenant.id, tenant_name: tenant.name, ai_enabled: true, ai_model: 'gpt-4o-mini', current_usage: 1842, monthly_limit: 100000, request_count: 12, last_request: new Date().toISOString() }));
 
   return (
     <div className="max-w-6xl mx-auto space-y-6">
