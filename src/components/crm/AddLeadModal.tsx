@@ -11,12 +11,15 @@ interface AddLeadModalProps {
   lead?: Lead | null;
 }
 
+const leadSources = ['Cadastro manual', 'Telefone', 'Indicação', 'Anúncio Meta', 'Anúncio Google', 'Site', 'Redes Sociais', 'WhatsApp', 'Evento', 'Importação'];
+
 export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
   const currentUser = useStore(state => state.currentUser);
   const pipelines = useStore(state => state.pipelines);
   const activeTenantId = useStore(state => state.activeTenantId);
   const addLead = useStore(state => state.addLead);
   const updateLead = useStore(state => state.updateLead);
+  const tags = useStore(state => state.tags);
   const tenantId = currentUser?.role === 'master' ? activeTenantId : currentUser?.tenantId;
   const pipeline = pipelines.find(p => p.tenantId === tenantId);
 
@@ -25,6 +28,8 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
   const [email, setEmail] = useState('');
   const [company, setCompany] = useState('');
   const [source, setSource] = useState('Cadastro manual');
+  const [otherSource, setOtherSource] = useState('');
+  const [tagIds, setTagIds] = useState<string[]>([]);
   const [classification, setClassification] = useState<NonNullable<Lead['classification']> | ''>('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -35,7 +40,10 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
     setPhone(lead?.phone || '');
     setEmail(lead?.email || '');
     setCompany(lead?.company || '');
-    setSource(lead?.source || 'Cadastro manual');
+    const savedSource = lead?.source || 'Cadastro manual';
+    setSource(leadSources.includes(savedSource) ? savedSource : 'Outro');
+    setOtherSource(lead && !leadSources.includes(savedSource) ? savedSource : '');
+    setTagIds(lead?.tags || []);
     setClassification(lead?.classification || '');
     setError('');
   }, [isOpen, lead]);
@@ -59,9 +67,10 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
         phone: phone.trim(),
         email: email.trim(),
         company: company.trim(),
-        source,
+        source: source === 'Outro' ? otherSource.trim() : source,
         sourceType: automaticSource ? 'automatic' as const : 'manual' as const,
         classification: classification || null,
+        tags: tagIds,
       };
       if (lead) {
         await updateLead(lead.id, values);
@@ -111,10 +120,19 @@ export function AddLeadModal({ isOpen, onClose, lead }: AddLeadModalProps) {
               <option value="Cadastro manual">Cadastro manual</option>
               <option value="Telefone">Telefone</option>
               <option value="Indicação">Indicação</option>
+              <option value="Anúncio Meta">Anúncio Meta</option>
+              <option value="Anúncio Google">Anúncio Google</option>
+              <option value="Site">Site</option>
+              <option value="Redes Sociais">Redes Sociais</option>
+              <option value="WhatsApp">WhatsApp</option>
+              <option value="Evento">Evento</option>
+              <option value="Importação">Importação</option>
               <option value="Outro">Outro</option>
             </select>
             <p className="text-xs text-slate-500 mt-1">{automaticSource ? 'Origem registrada automaticamente por uma integração.' : 'Origem informada manualmente. Não representa uma integração ativa.'}</p>
           </div>
+          {source === 'Outro' && <div><label className="block text-sm font-bold text-slate-700 mb-1">Informe a origem *</label><Input required value={otherSource} onChange={event => setOtherSource(event.target.value)} /></div>}
+          <fieldset><legend className="block text-sm font-bold text-slate-700 mb-2">Etiquetas</legend><div className="flex flex-wrap gap-2">{tags.filter(tag => tag.tenantId === tenantId).map(tag => <label key={tag.id} className="flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold"><input type="checkbox" checked={tagIds.includes(tag.id)} onChange={event => setTagIds(current => event.target.checked ? [...current, tag.id] : current.filter(id => id !== tag.id))} /><span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: tag.color }} />{tag.name}</label>)}</div></fieldset>
           {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
           <div className="pt-4 flex justify-end gap-3 border-t border-slate-100">
             <Button type="button" variant="outline" onClick={onClose}>Cancelar</Button>
