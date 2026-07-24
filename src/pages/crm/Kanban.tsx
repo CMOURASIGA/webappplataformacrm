@@ -17,6 +17,7 @@ export default function Kanban() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [chatLeadId, setChatLeadId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState('');
   const navigate = useNavigate();
   const idleRule = useStore(state => state.automations.find(rule => rule.trigger === 'stage_idle' && rule.enabled));
   
@@ -30,13 +31,14 @@ export default function Kanban() {
 
   const tenantLeads = leads.filter(l => l.tenantId === tenantId);
 
-  const onDragEnd = (result: DropResult) => {
+  const onDragEnd = async (result: DropResult) => {
     const { destination, source, draggableId } = result;
 
     if (!destination) return;
     if (destination.droppableId === source.droppableId && destination.index === source.index) return;
 
-    moveLead(draggableId, destination.droppableId);
+    await moveLead(draggableId, destination.droppableId);
+    setFeedback('Lead movido e histórico atualizado.');
   };
 
   return (
@@ -48,6 +50,7 @@ export default function Kanban() {
           <button onClick={() => navigate('/leads')} className="text-primary-600 text-xs font-bold hover:underline">Ver todos</button>
         </div>
       </div>
+      {feedback && <div className="mb-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{feedback}</div>}
 
       <div className="flex-1 overflow-x-auto pb-4">
         <DragDropContext onDragEnd={onDragEnd}>
@@ -112,6 +115,11 @@ export default function Kanban() {
                                   <span className="text-slate-500 flex items-center gap-1"><Phone size={10} /> {lead.phone}</span>
                                   <span className="text-slate-400">{new Date(lead.createdAt).toLocaleDateString()}</span>
                                 </div>
+                                <label className="mt-3 block text-[10px] font-bold text-slate-500">Mover para
+                                  <select value={lead.stageId} onChange={async event => { event.stopPropagation(); await moveLead(lead.id, event.target.value); setFeedback('Lead movido e histórico atualizado.'); }} onPointerDown={event => event.stopPropagation()} className="mt-1 w-full rounded border border-slate-200 bg-white px-2 py-1 text-xs font-normal text-slate-700">
+                                    {[...pipeline.stages].sort((a, b) => a.order - b.order).map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                                  </select>
+                                </label>
                               </div>
                             )}
                           </Draggable>
