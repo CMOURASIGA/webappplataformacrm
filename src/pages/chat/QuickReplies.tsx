@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store';
-import { Plus, Trash2, MessageSquare, Smile } from 'lucide-react';
+import { Copy, Pencil, Plus, Trash2, MessageSquare, Smile } from 'lucide-react';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
@@ -8,6 +8,7 @@ import EmojiPicker, { EmojiClickData } from 'emoji-picker-react';
 export default function QuickReplies() {
   const quickReplies = useStore(state => state.quickReplies) || [];
   const createQuickReply = useStore(state => state.createQuickReply);
+  const updateQuickReply = useStore(state => state.updateQuickReply);
   const deleteQuickReply = useStore(state => state.deleteQuickReply);
   
   const [isAdding, setIsAdding] = useState(false);
@@ -15,16 +16,21 @@ export default function QuickReplies() {
   const [text, setText] = useState('');
   const [category, setCategory] = useState('Geral');
   const [showEmoji, setShowEmoji] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState('');
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (title.trim() && text.trim()) {
-      await createQuickReply(title, text, category);
+      if (editingId) await updateQuickReply(editingId, { title, text, category });
+      else await createQuickReply(title, text, category);
       setTitle('');
       setText('');
       setCategory('Geral');
       setIsAdding(false);
       setShowEmoji(false);
+      setEditingId(null);
+      setFeedback(editingId ? 'Resposta rápida atualizada.' : 'Resposta rápida criada.');
     }
   };
 
@@ -48,7 +54,7 @@ export default function QuickReplies() {
 
       {isAdding && (
         <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h2 className="text-lg font-bold text-slate-800 mb-4">Adicionar nova resposta</h2>
+          <h2 className="text-lg font-bold text-slate-800 mb-4">{editingId ? 'Editar resposta' : 'Adicionar nova resposta'}</h2>
           <form onSubmit={handleCreate} className="space-y-4">
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Categoria</label>
@@ -97,7 +103,7 @@ export default function QuickReplies() {
             </div>
             
             <div className="flex justify-end gap-2 pt-4 border-t border-slate-100">
-              <Button type="button" variant="outline" onClick={() => setIsAdding(false)}>
+              <Button type="button" variant="outline" onClick={() => { setIsAdding(false); setEditingId(null); }}>
                 Cancelar
               </Button>
               <Button type="submit">
@@ -107,6 +113,7 @@ export default function QuickReplies() {
           </form>
         </div>
       )}
+      {feedback && <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">{feedback}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {quickReplies.map((reply) => (
@@ -116,13 +123,11 @@ export default function QuickReplies() {
                 <MessageSquare size={16} className="text-primary-500" />
                 {reply.title}
               </div>
-              <button 
-                onClick={() => deleteQuickReply(reply.id)}
-                className="text-slate-400 hover:text-red-500 transition-colors"
-                title="Excluir"
-              >
-                <Trash2 size={16} />
-              </button>
+              <div className="flex gap-2">
+                <button onClick={() => { setEditingId(reply.id); setTitle(reply.title); setText(reply.text); setCategory(reply.category || 'Geral'); setIsAdding(true); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="text-slate-400 hover:text-primary-600" title="Editar"><Pencil size={16} /></button>
+                <button onClick={() => { navigator.clipboard.writeText(reply.text); setFeedback('Conteúdo copiado.'); }} className="text-slate-400 hover:text-primary-600" title="Copiar conteúdo"><Copy size={16} /></button>
+                <button onClick={() => { if (window.confirm('Deseja realmente excluir esta resposta rápida? Esta ação não poderá ser desfeita.')) { deleteQuickReply(reply.id); setFeedback('Resposta rápida excluída.'); } }} className="text-slate-400 hover:text-red-500 transition-colors" title="Excluir"><Trash2 size={16} /></button>
+              </div>
             </div>
             <div className="px-4 pt-3 text-[10px] font-bold uppercase tracking-wider text-primary-600">{reply.category || 'Geral'}</div>
             <div className="p-4 flex-1 text-sm text-slate-600 overflow-y-auto max-h-[200px] whitespace-pre-wrap">
