@@ -16,6 +16,7 @@ import KanbanConfig from './pages/crm/KanbanConfig';
 import LeadsList from './pages/crm/LeadsList';
 import Chat from './pages/chat/Chat';
 import QuickReplies from './pages/chat/QuickReplies';
+import InternalChat from './pages/chat/InternalChat';
 import Settings from './pages/admin/Settings';
 import Users from './pages/admin/Users';
 import AiSettings from './pages/settings/AiSettings';
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="leads" element={<LeadsList />} />
           <Route path="chat" element={<ErrorBoundary title="Não foi possível exibir as conversas"><Chat /></ErrorBoundary>} />
           <Route path="chat/quick-replies" element={<RequireRole roles={['master', 'admin']}><QuickReplies /></RequireRole>} />
+          <Route path="chat/internal" element={<InternalChat />} />
           <Route path="settings" element={<RequireRole roles={['master', 'admin']}><Settings /></RequireRole>} />
           <Route path="users" element={<RequireRole roles={['master', 'admin']}><Users /></RequireRole>} />
           <Route path="settings/automations" element={<RequireRole roles={['master', 'admin']}><Automations /></RequireRole>} />
