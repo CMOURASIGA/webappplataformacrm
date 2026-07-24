@@ -36,6 +36,8 @@ export default function LeadsList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>('all');
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [tagFilter, setTagFilter] = useState('all');
   const [workspaceLeadId, setWorkspaceLeadId] = useState<string | null>(null);
   const [workspaceTab, setWorkspaceTab] = useState<'conversation' | 'history' | 'discussion' | 'data'>('history');
   const [showImport, setShowImport] = useState(false);
@@ -56,9 +58,10 @@ export default function LeadsList() {
   const tenantId = currentUser.role === 'master' ? activeTenantId : currentUser.tenantId;
   const tenantLeads = leads.filter(lead => lead.tenantId === tenantId);
   const filteredLeads = tenantLeads.filter(lead => {
-    if (classificationFilter === 'all') return true;
-    if (classificationFilter === 'unclassified') return !lead.classification;
-    return lead.classification === classificationFilter;
+    const classificationMatches = classificationFilter === 'all' || (classificationFilter === 'unclassified' ? !lead.classification : lead.classification === classificationFilter);
+    const sourceMatches = sourceFilter === 'all' || lead.source === sourceFilter;
+    const tagMatches = tagFilter === 'all' || lead.tags?.includes(tagFilter);
+    return classificationMatches && sourceMatches && tagMatches;
   });
 
   const exportLeads = () => {
@@ -154,6 +157,8 @@ export default function LeadsList() {
               <option value="unclassified">Nao classificados</option>
             </select>
           </label>
+          <label className="text-xs font-bold text-slate-600"><span className="mb-1 block">Origem</span><select value={sourceFilter} onChange={event => setSourceFilter(event.target.value)} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal"><option value="all">Todas</option>{Array.from(new Set(tenantLeads.map(lead => lead.source))).sort().map(source => <option key={source} value={source}>{source}</option>)}</select></label>
+          <label className="text-xs font-bold text-slate-600"><span className="mb-1 block">Etiqueta</span><select value={tagFilter} onChange={event => setTagFilter(event.target.value)} className="h-9 rounded-md border border-slate-300 bg-white px-3 text-sm font-normal"><option value="all">Todas</option>{tags.filter(tag => tag.tenantId === tenantId).map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}</select></label>
           <Button variant="outline" onClick={exportLeads} disabled={filteredLeads.length === 0}><Download size={15} className="mr-1.5" /> Exportar</Button>
           <Button variant="outline" onClick={() => setShowImport(true)}><Upload size={15} className="mr-1.5" /> Importar</Button>
           <Button onClick={() => { setEditingLead(null); setIsModalOpen(true); }}>Adicionar lead</Button>
@@ -179,6 +184,7 @@ export default function LeadsList() {
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="font-bold text-slate-900 text-sm">{lead.name}</div>
                   {lead.company && <div className="text-[11px] text-slate-500 mt-1">{lead.company}</div>}
+                  <div className="mt-1 flex flex-wrap gap-1">{(lead.tags || []).map(id => { const tag = tags.find(item => item.id === id); return tag ? <span key={id} className="rounded-full px-2 py-0.5 text-[9px] font-bold text-white" style={{ backgroundColor: tag.color }}>{tag.name}</span> : null; })}</div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
                   <div className="text-xs text-slate-700 flex items-center gap-1.5 font-medium"><Phone size={12}/> {lead.phone}</div>
