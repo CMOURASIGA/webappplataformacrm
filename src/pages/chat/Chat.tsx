@@ -82,12 +82,18 @@ export default function Chat() {
 
   const handleSummarize = async () => {
     if (!activeConversation) return;
+    const processedIds = new Set(activeLead?.history?.flatMap(entry => entry.messageIds || []) || []);
+    const sessionMessages = activeMessages.filter(message => !processedIds.has(message.id));
+    if (sessionMessages.length === 0) {
+      setOperationError('Não existem novas mensagens para registrar neste histórico.');
+      return;
+    }
     setIsAiLoading(true);
     setOperationError('');
     try {
       const data = await fetchApi('/mvp/ai', {
         method: 'POST',
-        body: JSON.stringify({ action: 'summarize', lead: activeLead, messages: activeMessages }),
+        body: JSON.stringify({ action: 'summarize', lead: activeLead, messages: sessionMessages }),
       });
       setAiSummary(data);
       if (activeLead && useStore.getState().automations.find(rule => rule.trigger === 'ai_summary' && rule.enabled)) {
@@ -96,6 +102,9 @@ export default function Chat() {
           title: 'Resumo do atendimento',
           content: [data.resumo, data.proxima_acao ? `Próxima ação: ${data.proxima_acao}` : ''].filter(Boolean).join(' '),
           createdBy: currentUser?.id,
+          messageIds: sessionMessages.map(message => message.id),
+          startedAt: sessionMessages[0]?.createdAt,
+          endedAt: sessionMessages.at(-1)?.createdAt,
         });
       }
     } catch (err) {
@@ -161,6 +170,8 @@ export default function Chat() {
 
   useEffect(() => {
     const view = searchParams.get('view');
+    const lead = searchParams.get('lead');
+    if (lead && tenantLeads.some(item => item.id === lead)) setActiveLeadId(lead);
     if (view === 'minhas' || view === 'fila' || view === 'todas' || view === 'abertas') {
       setFilter(view);
     }
@@ -285,7 +296,7 @@ export default function Chat() {
                 </div>
                 <div>
                   <div className="font-bold text-sm text-slate-800">{activeLead.name}</div>
-                  <div className="text-[11px] text-emerald-600 font-medium">Online no WhatsApp</div>
+                  <div className="text-[11px] text-slate-500 font-medium">Ambiente demonstrativo</div>
                   {activeLead.classification && (
                     <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
                       Classificacao: <span className="text-primary-700">{activeLead.classification}</span>
@@ -318,7 +329,7 @@ export default function Chat() {
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleSummarize} disabled={isAiLoading}>
                   <FileText size={14} className="mr-1" />
-                  Resumir
+                  Registrar histórico
                 </Button>
                 
                 {activeConversation && (!activeConversation.assignedTo || activeConversation.status === 'unassigned' || activeConversation.status === 'new') && (
