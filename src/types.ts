@@ -91,6 +91,9 @@ export interface LeadHistoryEntry {
   content: string;
   createdAt: string;
   createdBy?: string;
+  messageIds?: string[];
+  startedAt?: string;
+  endedAt?: string;
 }
 
 export interface AutomationRule {
@@ -140,4 +143,39 @@ export interface QuickReply {
   title: string;
   text: string;
   category: string;
+  active?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export type InternalChannelType = 'direct' | 'private_group' | 'team_channel' | 'lead_discussion';
+
+export interface InternalChannel {
+  id: string;
+  tenantId: string;
+  name: string;
+  description?: string;
+  type: InternalChannelType;
+  participantIds: string[];
+  leadId?: string;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface InternalMessage {
+  id: string;
+  channelId: string;
+  senderId: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface AuditLog {
+  id: string;
+  action: string;
+  userId?: string;
+  module: string;
+  status: 'success' | 'error';
+  message: string;
+  createdAt: string;
 }
