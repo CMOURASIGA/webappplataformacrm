@@ -10,6 +10,7 @@ export default function KanbanConfig() {
   const activeTenantId = useStore(state => state.activeTenantId);
   const pipelines = useStore(state => state.pipelines);
   const tags = useStore(state => state.tags);
+  const leads = useStore(state => state.leads);
   const createStage = useStore(state => state.createStage);
   const deleteStage = useStore(state => state.deleteStage);
   const reorderStages = useStore(state => state.reorderStages);
@@ -82,7 +83,7 @@ export default function KanbanConfig() {
         <section className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
           <h2 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Tag size={20} className="text-slate-400" />Etiquetas</h2>
           <div className="flex flex-wrap gap-2 mb-6 min-h-[50px] p-2 bg-slate-50 rounded-lg border border-slate-200">
-            {tags.map(tag => <div key={tag.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: tag.color }}>{tag.name}<button onClick={() => deleteTag(tag.id)} title="Remover etiqueta"><Trash2 size={12} /></button></div>)}
+            {tags.map(tag => <div key={tag.id} className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold text-white" style={{ backgroundColor: tag.color }}>{tag.name}<button onClick={() => { const count = leads.filter(lead => lead.tags?.includes(tag.id)).length; if (window.confirm(`Deseja excluir esta etiqueta? ${count} lead(s) terão a associação removida.`)) deleteTag(tag.id); }} title="Remover etiqueta"><Trash2 size={12} /></button></div>)}
             {tags.length === 0 && <p className="text-sm text-slate-500 w-full text-center py-2">Nenhuma etiqueta configurada.</p>}
           </div>
           <form onSubmit={handleAddTag} className="flex gap-2 items-end"><div className="flex-1"><label className="block text-xs font-bold text-slate-600 mb-1">Nome</label><Input value={newTagName} onChange={e => setNewTagName(e.target.value)} /></div><input type="color" value={newTagColor} onChange={e => setNewTagColor(e.target.value)} className="h-10 w-12" /><Button type="submit" disabled={!newTagName.trim()}>Adicionar</Button></form>
