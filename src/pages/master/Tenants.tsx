@@ -2,10 +2,19 @@ import React, { useState } from 'react';
 import { useStore } from '../../store';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
+import type { Tenant } from '../../types';
+import { X } from 'lucide-react';
 
 export default function Tenants() {
   const tenants = useStore(state => state.tenants);
   const addTenant = useStore(state => state.addTenant);
+  const updateTenant = useStore(state => state.updateTenant);
+  const users = useStore(state => state.users);
+  const pipelines = useStore(state => state.pipelines);
+  const [managed, setManaged] = useState<Tenant | null>(null);
+  const [managedName, setManagedName] = useState('');
+  const [managedStatus, setManagedStatus] = useState<Tenant['status']>('active');
+  const [feedback, setFeedback] = useState('');
   
   const [formData, setFormData] = useState({
     name: '',
@@ -103,6 +112,7 @@ export default function Tenants() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+        {feedback && <div className="border-b border-emerald-200 bg-emerald-50 px-6 py-3 text-sm text-emerald-700">{feedback}</div>}
         <table className="min-w-full divide-y divide-slate-200">
           <thead className="bg-slate-50">
             <tr>
@@ -135,7 +145,7 @@ export default function Tenants() {
                   {new Date(tenant.createdAt).toLocaleDateString()}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                  <Button variant="ghost" size="sm">Gerenciar</Button>
+                  <Button variant="ghost" size="sm" onClick={() => { setManaged(tenant); setManagedName(tenant.name); setManagedStatus(tenant.status); }}>Gerenciar</Button>
                 </td>
               </tr>
             ))}
@@ -149,6 +159,7 @@ export default function Tenants() {
           </tbody>
         </table>
       </div>
+      {managed && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4"><form onSubmit={async event => { event.preventDefault(); await updateTenant(managed.id, { name: managedName.trim(), status: managedStatus, settings: { ...managed.settings, companyName: managedName.trim() } }); setManaged(null); setFeedback('Empresa atualizada com sucesso.'); }} className="w-full max-w-xl space-y-5 rounded-xl bg-white p-6 shadow-xl"><div className="flex items-start justify-between"><div><h2 className="text-lg font-bold text-slate-800">Gerenciar empresa</h2><p className="text-sm text-slate-500">Criada em {new Date(managed.createdAt).toLocaleDateString('pt-BR')}</p></div><button type="button" onClick={() => setManaged(null)}><X /></button></div><label className="block text-sm font-bold">Nome da empresa<Input value={managedName} onChange={event => setManagedName(event.target.value)} required /></label><label className="block text-sm font-bold">Status<select value={managedStatus} onChange={event => setManagedStatus(event.target.value as Tenant['status'])} className="mt-1 w-full rounded-md border border-slate-300 p-2 font-normal"><option value="active">Ativa</option><option value="suspended">Desativada</option></select></label><div className="grid grid-cols-3 gap-3"><div className="rounded-lg bg-slate-50 p-3 text-center"><strong className="block text-xl">{users.filter(user => user.tenantId === managed.id).length}</strong><span className="text-xs text-slate-500">Usuários</span></div><div className="rounded-lg bg-slate-50 p-3 text-center"><strong className="block text-xl">{pipelines.filter(item => item.tenantId === managed.id).length}</strong><span className="text-xs text-slate-500">Funis</span></div><div className="rounded-lg bg-slate-50 p-3 text-center"><strong className="block text-xl">{users.filter(user => user.tenantId === managed.id && user.role === 'admin').length}</strong><span className="text-xs text-slate-500">Administradores</span></div></div><div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setManaged(null)}>Cancelar</Button><Button type="submit">Salvar alterações</Button></div></form></div>}
     </div>
   );
 }
