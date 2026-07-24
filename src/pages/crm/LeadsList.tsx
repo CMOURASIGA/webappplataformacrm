@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useStore } from '../../store';
-import { Download, Mail, Phone } from 'lucide-react';
+import { Download, History, Mail, Phone, Upload } from 'lucide-react';
 import type { Lead } from '../../types';
 import { Button } from '../../components/ui/Button';
 import { AddLeadModal } from '../../components/crm/AddLeadModal';
 import { cn } from '../../lib/utils';
+import { ImportLeadsModal } from '../../components/crm/ImportLeadsModal';
+import { LeadChatDrawer } from '../../components/crm/LeadChatDrawer';
 
 type ClassificationFilter = 'all' | 'unclassified' | NonNullable<Lead['classification']>;
 
@@ -35,6 +37,9 @@ export default function LeadsList() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingLead, setEditingLead] = useState<Lead | null>(null);
   const [classificationFilter, setClassificationFilter] = useState<ClassificationFilter>('all');
+  const [importOpen, setImportOpen] = useState(false);
+  const [historyLeadId, setHistoryLeadId] = useState<string | null>(null);
+  const initializeData = useStore(state => state.initializeData);
 
   if (!currentUser) return null;
 
@@ -103,6 +108,7 @@ export default function LeadsList() {
           <Button variant="outline" onClick={exportLeads} disabled={filteredLeads.length === 0}>
             <Download size={15} className="mr-1.5" /> Exportar Excel (.csv)
           </Button>
+          {(currentUser.role === 'admin' || currentUser.role === 'master' || currentUser.canImportLeads) && <Button variant="outline" onClick={() => setImportOpen(true)}><Upload size={15} className="mr-1.5" /> Importar leads</Button>}
           <Button onClick={() => { setEditingLead(null); setIsModalOpen(true); }}>Adicionar lead</Button>
         </div>
       </div>
@@ -147,6 +153,7 @@ export default function LeadsList() {
                   </span>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <Button variant="ghost" size="sm" onClick={() => setHistoryLeadId(lead.id)}><History size={14} className="mr-1" /> Historico</Button>
                   <Button variant="ghost" size="sm" onClick={() => { setEditingLead(lead); setIsModalOpen(true); }}>Editar ficha</Button>
                 </td>
               </tr>
@@ -162,6 +169,8 @@ export default function LeadsList() {
         </table>
       </div>
       <AddLeadModal isOpen={isModalOpen} lead={editingLead} onClose={() => { setIsModalOpen(false); setEditingLead(null); }} />
+      <ImportLeadsModal isOpen={importOpen} onClose={() => setImportOpen(false)} onImported={initializeData} />
+      <LeadChatDrawer leadId={historyLeadId} isOpen={!!historyLeadId} initialTab="history" onClose={() => setHistoryLeadId(null)} />
     </div>
   );
 }

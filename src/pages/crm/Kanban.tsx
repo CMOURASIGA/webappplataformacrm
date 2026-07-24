@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useStore } from '../../store';
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd';
-import { Phone, Mail, Plus, MessageCircle } from 'lucide-react';
+import { AlertTriangle, Clock3, History, Phone, Plus, MessageCircle, Users } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { Button } from '../../components/ui/Button';
 import { AddLeadModal } from '../../components/crm/AddLeadModal';
 import { LeadChatDrawer } from '../../components/crm/LeadChatDrawer';
+import { fetchApi } from '../../lib/api';
 
 export default function Kanban() {
   const currentUser = useStore(state => state.currentUser);
@@ -16,6 +17,9 @@ export default function Kanban() {
   
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [chatLeadId, setChatLeadId] = useState<string | null>(null);
+  const [drawerTab, setDrawerTab] = useState<'conversation' | 'history' | 'internal'>('conversation');
+  const [serviceOverview, setServiceOverview] = useState<Record<string, any>>({});
+  useEffect(() => { fetchApi('/leads/service-overview').then(setServiceOverview).catch(() => setServiceOverview({})); }, [leads.length]);
   
   if (!currentUser) return null;
 
@@ -76,14 +80,16 @@ export default function Kanban() {
                                 ref={provided.innerRef}
                                 {...provided.draggableProps}
                                 {...provided.dragHandleProps}
-                                onDoubleClick={() => setChatLeadId(lead.id)}
+                                onDoubleClick={() => { setDrawerTab('conversation'); setChatLeadId(lead.id); }}
                                 className={cn(
                                   "bg-white p-3 rounded-lg border shadow-sm border-l-4 select-none transition-shadow group relative",
                                   snapshot.isDragging ? "shadow-md border-primary-400 border-l-primary-500" : "border-slate-200 border-l-primary-400 hover:border-slate-300"
                                 )}
                               >
-                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-slate-400 hover:text-primary-600" onClick={(e) => { e.stopPropagation(); setChatLeadId(lead.id); }}>
-                                  <MessageCircle size={14} />
+                                <div className="absolute top-2 right-2 flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <button title="Abrir conversa" className="p-1 text-slate-400 hover:text-primary-600" onClick={(e) => { e.stopPropagation(); setDrawerTab('conversation'); setChatLeadId(lead.id); }}><MessageCircle size={14} /></button>
+                                  <button title="Ver historico de atendimento" className="p-1 text-slate-400 hover:text-primary-600" onClick={(e) => { e.stopPropagation(); setDrawerTab('history'); setChatLeadId(lead.id); }}><History size={14} /></button>
+                                  <button title="Abrir discussao interna" className="p-1 text-slate-400 hover:text-primary-600" onClick={(e) => { e.stopPropagation(); setDrawerTab('internal'); setChatLeadId(lead.id); }}><Users size={14} /></button>
                                 </div>
                                 <p className="text-sm font-bold truncate text-slate-900 pr-5">{lead.name}</p>
                                 <p className="text-[11px] text-slate-500 mb-2">Origem: {lead.source}</p>
@@ -106,6 +112,10 @@ export default function Kanban() {
                                   <span className="text-slate-500 flex items-center gap-1"><Phone size={10} /> {lead.phone}</span>
                                   <span className="text-slate-400">{new Date(lead.createdAt).toLocaleDateString()}</span>
                                 </div>
+                                {serviceOverview[lead.id] && <div className="mt-2 space-y-1 border-t border-slate-100 pt-2 text-[10px] text-slate-500">
+                                  {serviceOverview[lead.id].latest && <><p className="flex items-center gap-1"><Clock3 size={10} /> Ultimo: {new Date(serviceOverview[lead.id].latest.ended_at).toLocaleString()} · {serviceOverview[lead.id].latest.attendantName || 'Usuario'}</p>{serviceOverview[lead.id].latest.next_action && <p className={cn('truncate', serviceOverview[lead.id].latest.next_action_due_at && new Date(serviceOverview[lead.id].latest.next_action_due_at) < new Date() ? 'font-bold text-red-600' : 'text-slate-600')}>{serviceOverview[lead.id].latest.next_action_due_at && new Date(serviceOverview[lead.id].latest.next_action_due_at) < new Date() && <AlertTriangle size={10} className="mr-1 inline" />}Proxima: {serviceOverview[lead.id].latest.next_action}</p>}</>}
+                                  {serviceOverview[lead.id].pendingCount > 0 && <p className="font-bold text-amber-700">{serviceOverview[lead.id].pendingCount} mensagens nao registradas</p>}
+                                </div>}
                               </div>
                             )}
                           </Draggable>
@@ -121,7 +131,7 @@ export default function Kanban() {
         </DragDropContext>
       </div>
       <AddLeadModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} />
-      <LeadChatDrawer leadId={chatLeadId} isOpen={!!chatLeadId} onClose={() => setChatLeadId(null)} />
+      <LeadChatDrawer leadId={chatLeadId} isOpen={!!chatLeadId} initialTab={drawerTab} onClose={() => setChatLeadId(null)} />
     </div>
   );
 }
