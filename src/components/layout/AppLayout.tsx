@@ -12,6 +12,10 @@ import {
   Smartphone,
   Bot,
   UserCog,
+  MessageCircleMore,
+  MessageSquareText,
+  KanbanSquare,
+  Tags,
 } from "lucide-react";
 import { Sparkles, Book } from "lucide-react";
 import { cn } from "../../lib/utils";
@@ -97,9 +101,15 @@ export function AppLayout() {
           adminOnly: false,
         },
         {
+          name: "Chat interno",
+          href: "/chat/internal",
+          icon: <MessageCircleMore size={16} />,
+          adminOnly: false,
+        },
+        {
           name: "Respostas Rápidas",
           href: "/chat/quick-replies",
-          icon: <MessageSquare size={16} />,
+          icon: <MessageSquareText size={16} />,
           adminOnly: true,
         },
       ],
@@ -110,7 +120,7 @@ export function AppLayout() {
         {
           name: "Funil de leads",
           href: "/crm",
-          icon: <Trello size={16} />,
+          icon: <KanbanSquare size={16} />,
           adminOnly: false,
         },
         {
