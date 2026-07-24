@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { AutomationRule, Conversation, Lead, Message, Pipeline, QuickReply, Tenant, TenantTag, User } from './types';
+import { AuditLog, AutomationRule, Conversation, InternalChannel, InternalMessage, Lead, Message, Pipeline, QuickReply, Tenant, TenantTag, User } from './types';
 import { generateId } from './lib/utils';
 import { createDemoSnapshot, demoUsers } from './demoData';
 
@@ -15,6 +15,9 @@ interface AppState {
   quickReplies: QuickReply[];
   tags: TenantTag[];
   automations: AutomationRule[];
+  internalChannels: InternalChannel[];
+  internalMessages: InternalMessage[];
+  auditLogs: AuditLog[];
   isInitialized: boolean;
   initError: string | null;
   activeTenantId: string | null;
@@ -25,6 +28,7 @@ interface AppState {
   setActiveTenantId: (id: string | null) => Promise<void>;
   addTenant: (data: any) => Promise<void>;
   updateTenantSettings: (tenantId: string, settings: any) => Promise<void>;
+  updateTenant: (tenantId: string, updates: Partial<Tenant>) => Promise<void>;
   addUser: (user: Omit<User, 'id'>) => void;
   updateUser: (id: string, updates: Partial<User>) => void;
   createTag: (name: string, color: string) => Promise<void>;
@@ -45,7 +49,11 @@ interface AppState {
   updateConversationStatus: (conversationId: string, status: Conversation['status'], closeReason?: string) => Promise<void>;
   fetchMessages: (conversationId: string) => Promise<void>;
   createQuickReply: (title: string, text: string, category: string) => Promise<void>;
+  updateQuickReply: (id: string, updates: Partial<QuickReply>) => Promise<void>;
   deleteQuickReply: (id: string) => Promise<void>;
+  createInternalChannel: (channel: Omit<InternalChannel, 'id' | 'createdAt'>) => Promise<void>;
+  addInternalMessage: (channelId: string, text: string) => Promise<void>;
+  logAction: (module: string, action: string, status: AuditLog['status'], message: string) => void;
   saveAutomation: (rule: AutomationRule) => void;
   deleteAutomation: (id: string) => void;
 }
@@ -62,6 +70,9 @@ export const useStore = create<AppState>()(
       currentUser: null,
       ...createDemoSnapshot(),
       automations: defaultAutomations,
+      internalChannels: [],
+      internalMessages: [],
+      auditLogs: [],
       isInitialized: false,
       initError: null,
       loginError: null,
@@ -97,6 +108,7 @@ export const useStore = create<AppState>()(
       },
       addTenant: async data => { set(state => ({ tenants: [...state.tenants, { ...data, id: generateId(), createdAt: new Date().toISOString(), status: 'active' }] })); },
       updateTenantSettings: async (tenantId, settings) => { set(state => ({ tenants: state.tenants.map(t => t.id === tenantId ? { ...t, settings: { ...t.settings, ...settings } } : t) })); },
+      updateTenant: async (tenantId, updates) => { set(state => ({ tenants: state.tenants.map(t => t.id === tenantId ? { ...t, ...updates } : t) })); },
       addUser: user => set(state => ({ users: [...state.users, { ...user, id: generateId() }] })),
       updateUser: (id, updates) => set(state => ({ users: state.users.map(user => user.id === id ? { ...user, ...updates } : user) })),
       createTag: async (name, color) => { set(state => ({ tags: [{ id: generateId(), tenantId: get().activeTenantId || get().currentUser?.tenantId || 'tenant-1', name, color, createdAt: new Date().toISOString() }, ...state.tags] })); },
@@ -113,8 +125,10 @@ export const useStore = create<AppState>()(
       updateLead: async (id, updates) => { set(state => ({ leads: state.leads.map(lead => lead.id === id ? { ...lead, ...updates, updatedAt: new Date().toISOString() } : lead) })); },
       setLeadClassification: (id, classification, details, classifiedAt) => set(state => ({ leads: state.leads.map(lead => lead.id === id ? { ...lead, classification, classificationDetails: details, classifiedAt: classifiedAt || new Date().toISOString() } : lead) })),
       moveLead: async (leadId, newStageId) => {
+        const leadBefore = get().leads.find(item => item.id === leadId);
         const stage = get().pipelines.flatMap(p => p.stages).find(item => item.id === newStageId);
-        set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, stageId: newStageId, updatedAt: new Date().toISOString(), attentionSince: undefined, history: [{ id: generateId(), type: 'stage_change', title: 'Mudança de etapa', content: `Lead movido para ${stage?.name || 'nova etapa'}.`, createdAt: new Date().toISOString(), createdBy: get().currentUser?.id }, ...(lead.history || [])] } : lead) }));
+        const previousStage = get().pipelines.flatMap(p => p.stages).find(item => item.id === leadBefore?.stageId);
+        set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, stageId: newStageId, updatedAt: new Date().toISOString(), attentionSince: undefined, history: [{ id: generateId(), type: 'stage_change', title: 'Mudança de etapa', content: `Lead movido de ${previousStage?.name || 'etapa anterior'} para ${stage?.name || 'nova etapa'}. Responsável: ${get().currentUser?.name || 'Usuário atual'}.`, createdAt: new Date().toISOString(), createdBy: get().currentUser?.id }, ...(lead.history || [])] } : lead) }));
       },
       addLeadHistory: (leadId, entry) => set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, history: [{ ...entry, id: generateId(), createdAt: new Date().toISOString() }, ...(lead.history || [])] } : lead) })),
       addLeadAttachment: (leadId, file) => set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, attachments: [...(lead.attachments || []), { id: generateId(), name: file.name, type: file.type || 'application/octet-stream', size: file.size, createdAt: new Date().toISOString() }] } : lead) })),
@@ -124,8 +138,20 @@ export const useStore = create<AppState>()(
       addMessage: async (conversationId, senderId, text) => { set(state => ({ messages: [...state.messages, { id: generateId(), conversationId, senderId, text, createdAt: new Date().toISOString() }], conversations: state.conversations.map(c => c.id === conversationId ? { ...c, updatedAt: new Date().toISOString() } : c) })); },
       assignConversation: async (conversationId, userId) => { set(state => ({ conversations: state.conversations.map(c => c.id === conversationId ? { ...c, assignedTo: userId, status: 'assigned' } : c) })); },
       updateConversationStatus: async (conversationId, status) => { set(state => ({ conversations: state.conversations.map(c => c.id === conversationId ? { ...c, status, updatedAt: new Date().toISOString() } : c) })); },
-      createQuickReply: async (title, text, category) => { set(state => ({ quickReplies: [{ id: generateId(), tenantId: get().currentUser?.tenantId || 'tenant-1', title, text, category }, ...state.quickReplies] })); },
+      createQuickReply: async (title, text, category) => { const now = new Date().toISOString(); set(state => ({ quickReplies: [{ id: generateId(), tenantId: get().currentUser?.tenantId || 'tenant-1', title, text, category, active: true, createdAt: now, updatedAt: now }, ...state.quickReplies] })); },
+      updateQuickReply: async (id, updates) => { set(state => ({ quickReplies: state.quickReplies.map(reply => reply.id === id ? { ...reply, ...updates, updatedAt: new Date().toISOString() } : reply) })); },
       deleteQuickReply: async id => { set(state => ({ quickReplies: state.quickReplies.filter(reply => reply.id !== id) })); },
+      createInternalChannel: async channel => {
+        const item = { ...channel, id: generateId(), createdAt: new Date().toISOString() };
+        set(state => ({ internalChannels: [item, ...state.internalChannels] }));
+        get().logAction('internal-chat', 'CREATE_INTERNAL_CHANNEL', 'success', `Canal ${item.name} criado.`);
+      },
+      addInternalMessage: async (channelId, text) => {
+        const senderId = get().currentUser?.id;
+        if (!senderId) throw new Error('Usuário não identificado.');
+        set(state => ({ internalMessages: [...state.internalMessages, { id: generateId(), channelId, senderId, text, createdAt: new Date().toISOString() }] }));
+      },
+      logAction: (module, action, status, message) => set(state => ({ auditLogs: [{ id: generateId(), module, action, status, message, userId: get().currentUser?.id, createdAt: new Date().toISOString() }, ...state.auditLogs].slice(0, 200) })),
       saveAutomation: rule => set(state => ({ automations: state.automations.some(item => item.id === rule.id) ? state.automations.map(item => item.id === rule.id ? rule : item) : [rule, ...state.automations] })),
       deleteAutomation: id => set(state => ({ automations: state.automations.filter(rule => rule.id !== id) })),
     }),
