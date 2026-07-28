@@ -223,7 +223,7 @@ export default function LeadsList() {
         </table>
       </div>
       <AddLeadModal isOpen={isModalOpen} lead={editingLead} onClose={() => { setIsModalOpen(false); setEditingLead(null); }} />
-      {workspaceLeadId && (() => {
+      {workspaceLeadId && !isModalOpen && (() => {
         const lead = leads.find(item => item.id === workspaceLeadId);
         if (!lead) return null;
         return <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/40">
