@@ -12,7 +12,7 @@
   "crons": [
     {
       "path": "/api/jobs/automatic-conversation-closure",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 3 * * *"
     }
   ]
 }
