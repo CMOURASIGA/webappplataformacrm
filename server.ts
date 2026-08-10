@@ -936,8 +936,9 @@ app.patch('/api/conversations/:id/status', authenticate, async (req: any, res: a
       return res.status(403).json({ error: 'Não autorizado' });
   }
 
+  const isNewClosure = status === 'closed' && conv.status !== 'closed';
   if (status === 'closed') {
-    db.prepare('UPDATE conversations SET status = ?, closed_at = CURRENT_TIMESTAMP, closed_by = ?, close_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(
+    db.prepare("UPDATE conversations SET status = ?, closed_at = strftime('%Y-%m-%d %H:%M:%f', 'now'), closed_by = ?, close_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").run(
       status, currentUserId, close_reason || null, id
     );
   } else {
@@ -955,7 +956,22 @@ app.patch('/api/conversations/:id/status', authenticate, async (req: any, res: a
 
   await commitDbChanges();
   const saved = db.prepare('SELECT * FROM conversations WHERE id = ?').get(id) as any;
-  res.json({ ...saved, tenantId: saved.tenant_id, leadId: saved.lead_id, assignedTo: saved.assigned_to, createdAt: saved.created_at, updatedAt: saved.updated_at });
+  let aiFeedback = null;
+  let aiFeedbackError = null;
+  if (isNewClosure) {
+    const feedbackUserId = saved.assigned_to || currentUserId;
+    try {
+      aiFeedback = await generateAttendanceFeedback(saved, 'manual', feedbackUserId);
+      db.prepare('UPDATE attendance_feedbacks SET viewed_at = CURRENT_TIMESTAMP WHERE id = ?').run(aiFeedback.id);
+      recordAudit(tenantId, currentUserId, 'attendance_feedback.viewed', 'attendance_feedbacks', aiFeedback.id, { conversationId: saved.id, presentation: 'manual_closure' });
+      await commitDbChanges();
+    } catch (error: any) {
+      aiFeedbackError = error?.message || 'Nao foi possivel gerar o feedback de IA';
+      recordAttendanceFeedbackFailure(saved, 'manual', feedbackUserId, aiFeedbackError);
+      await commitDbChanges();
+    }
+  }
+  res.json({ ...saved, tenantId: saved.tenant_id, leadId: saved.lead_id, assignedTo: saved.assigned_to, createdAt: saved.created_at, updatedAt: saved.updated_at, aiFeedback, aiFeedbackError });
 });
 
 app.post('/api/conversations/:id/messages', authenticate, async (req: any, res: any) => {
@@ -1058,9 +1074,167 @@ async function ensureTenantCanUseAi(tenantId: string) {
   return settings;
 }
 
+const DEFAULT_ATTENDANCE_FEEDBACK_PROMPT = `Analise a qualidade deste atendimento comercial.
+Considere clareza, cordialidade, escuta ativa, entendimento da necessidade, aderencia as orientacoes da empresa e conducao para o proximo passo.
+Apresente um resumo objetivo, pontos positivos, pontos que precisam melhorar, desvios encontrados e recomendacoes praticas para o atendente.`;
+
+function parseJsonArray(value: any) {
+  if (!Array.isArray(value)) return [];
+  return value.map(item => String(item || '').trim()).filter(Boolean);
+}
+
+function parseAiJson(text: string) {
+  const clean = text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
+  return JSON.parse(clean);
+}
+
+function formatAttendanceFeedback(row: any) {
+  if (!row) return null;
+  const parse = (value: string | null, fallback: any) => {
+    try { return value == null ? fallback : JSON.parse(value); } catch { return fallback; }
+  };
+  return {
+    id: row.id,
+    tenantId: row.tenant_id,
+    conversationId: row.conversation_id,
+    leadId: row.lead_id,
+    attendantId: row.attendant_id,
+    closureOrigin: row.closure_origin,
+    conversationClosedAt: row.conversation_closed_at,
+    closeReason: row.close_reason,
+    model: row.model,
+    summary: row.summary,
+    positivePoints: parse(row.positive_points_json, []),
+    improvementPoints: parse(row.improvement_points_json, []),
+    deviations: parse(row.deviations_json, []),
+    recommendations: parse(row.recommendations_json, []),
+    score: parse(row.score_json, null),
+    viewedAt: row.viewed_at,
+    dismissedAt: row.dismissed_at,
+    generatedAt: row.generated_at,
+  };
+}
+
+function recordAttendanceFeedbackFailure(conversation: any, origin: 'manual' | 'automatic', userId: string | null, message: string) {
+  const settings = db.prepare('SELECT model FROM ai_settings WHERE tenant_id = ?').get(conversation.tenant_id) as any;
+  db.prepare(`INSERT INTO ai_usage_logs
+    (id, tenant_id, user_id, conversation_id, lead_id, action, model, status, error_message)
+    VALUES (?, ?, ?, ?, ?, 'attendance_feedback', ?, 'error', ?)`)
+    .run(crypto.randomUUID(), conversation.tenant_id, userId, conversation.id, conversation.lead_id, settings?.model || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini', message);
+  recordAudit(conversation.tenant_id, userId, 'attendance_feedback.failed', 'attendance_feedbacks', conversation.id, { origin, error: message });
+}
+
+async function generateAttendanceFeedback(conversation: any, origin: 'manual' | 'automatic', userId: string | null) {
+  const existing = db.prepare('SELECT * FROM attendance_feedbacks WHERE conversation_id = ? AND conversation_closed_at = ?')
+    .get(conversation.id, conversation.closed_at) as any;
+  if (existing) return formatAttendanceFeedback(existing);
+
+  const settings = await ensureTenantCanUseAi(conversation.tenant_id);
+  if (!settings.attendance_feedback_enabled) throw new Error('Feedback de atendimento por IA nao esta habilitado');
+
+  const messages = db.prepare(`SELECT sender_type, direction, text, created_at
+    FROM messages WHERE conversation_id = ? ORDER BY created_at ASC, rowid ASC`).all(conversation.id) as any[];
+  if (!messages.length) throw new Error('A conversa nao possui mensagens para analise');
+
+  const lead = db.prepare('SELECT name, company FROM leads WHERE id = ? AND tenant_id = ?')
+    .get(conversation.lead_id, conversation.tenant_id) as any;
+  const attendant = userId
+    ? db.prepare('SELECT name FROM users WHERE id = ?').get(userId) as any
+    : null;
+  const prompt = String(settings.attendance_feedback_prompt || DEFAULT_ATTENDANCE_FEEDBACK_PROMPT).trim();
+  const system = `Voce atua como analista de qualidade de atendimento em um CRM.
+Siga estritamente os criterios definidos pelo administrador. Baseie a avaliacao apenas na conversa fornecida e nao invente fatos.
+Responda somente em JSON valido com estas chaves: summary (string), positivePoints (array de strings), improvementPoints (array de strings), deviations (array de strings), recommendations (array de strings) e score (numero, string, objeto ou null).
+Se os criterios nao solicitarem nota, retorne score como null.
+
+Criterios do administrador:
+${prompt}`;
+  const user = JSON.stringify({
+    lead: { name: lead?.name || 'Nao informado', company: lead?.company || null },
+    attendant: attendant?.name || null,
+    closeReason: conversation.close_reason || null,
+    messages: messages.map(message => ({
+      author: message.sender_type === 'user' ? 'atendente' : message.sender_type === 'lead' ? 'cliente' : message.sender_type,
+      text: message.text,
+      createdAt: message.created_at,
+    })),
+  });
+  const ai = process.env.NODE_ENV === 'test'
+    ? {
+        text: JSON.stringify({
+          summary: 'Atendimento analisado para teste.',
+          positivePoints: ['Comunicacao clara'],
+          improvementPoints: ['Confirmar o proximo passo'],
+          deviations: [],
+          recommendations: ['Registrar o prazo combinado'],
+          score: null,
+        }),
+        usage: { prompt_tokens: 10, completion_tokens: 10, total_tokens: 20 },
+        model: 'attendance-feedback-test-model',
+      }
+    : await generateAiResponse({ system, user, model: settings.model, temperature: 0.2 });
+  let data: any;
+  try {
+    data = parseAiJson(ai.text);
+  } catch {
+    throw new Error('A IA retornou o feedback em formato invalido');
+  }
+
+  const summary = String(data.summary || '').trim();
+  if (!summary) throw new Error('A IA retornou um feedback sem resumo');
+  const feedbackId = crypto.randomUUID();
+  const score = data.score == null ? null : JSON.stringify(data.score);
+  db.prepare(`INSERT INTO attendance_feedbacks
+    (id, tenant_id, conversation_id, lead_id, attendant_id, closure_origin, conversation_closed_at, close_reason, prompt_snapshot, model, summary, positive_points_json, improvement_points_json, deviations_json, recommendations_json, score_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(feedbackId, conversation.tenant_id, conversation.id, conversation.lead_id, userId, origin, conversation.closed_at, conversation.close_reason || null, prompt, ai.model, summary, JSON.stringify(parseJsonArray(data.positivePoints)), JSON.stringify(parseJsonArray(data.improvementPoints)), JSON.stringify(parseJsonArray(data.deviations)), JSON.stringify(parseJsonArray(data.recommendations)), score);
+
+  const usage = (ai.usage as any) || {};
+  db.prepare(`INSERT INTO ai_usage_logs
+    (id, tenant_id, user_id, conversation_id, lead_id, action, model, input_tokens, output_tokens, total_tokens, status)
+    VALUES (?, ?, ?, ?, ?, 'attendance_feedback', ?, ?, ?, ?, 'success')`)
+    .run(crypto.randomUUID(), conversation.tenant_id, userId, conversation.id, conversation.lead_id, ai.model, usage.prompt_tokens || 0, usage.completion_tokens || 0, usage.total_tokens || 0);
+  recordAudit(conversation.tenant_id, userId, 'attendance_feedback.generated', 'attendance_feedbacks', feedbackId, { origin, conversationId: conversation.id });
+  await commitDbChanges();
+  return formatAttendanceFeedback(db.prepare('SELECT * FROM attendance_feedbacks WHERE id = ?').get(feedbackId));
+}
+
+function canAccessAttendanceFeedback(req: any, conversationId: string) {
+  const conversation = db.prepare('SELECT * FROM conversations WHERE id = ? AND tenant_id = ?').get(conversationId, req.user.tenantId) as any;
+  if (!conversation) return null;
+  if (req.user.role === 'admin' || req.user.role === 'master') return conversation;
+  return conversation.assigned_to === req.user.id ? conversation : null;
+}
+
+app.get('/api/conversations/:id/attendance-feedback', authenticate, async (req: any, res: any) => {
+  const conversation = canAccessAttendanceFeedback(req, req.params.id);
+  if (!conversation) return res.status(404).json({ error: 'Conversa nao encontrada ou sem permissao' });
+  const feedback = db.prepare('SELECT * FROM attendance_feedbacks WHERE conversation_id = ? ORDER BY generated_at DESC, rowid DESC LIMIT 1').get(conversation.id) as any;
+  if (!feedback) return res.status(404).json({ error: 'Esta conversa ainda nao possui feedback de IA' });
+  if (!feedback.viewed_at) {
+    db.prepare('UPDATE attendance_feedbacks SET viewed_at = CURRENT_TIMESTAMP WHERE id = ?').run(feedback.id);
+    recordAudit(req.user.tenantId, req.user.id, 'attendance_feedback.viewed', 'attendance_feedbacks', feedback.id, { conversationId: conversation.id });
+    await commitDbChanges();
+  }
+  res.json(formatAttendanceFeedback(db.prepare('SELECT * FROM attendance_feedbacks WHERE id = ?').get(feedback.id)));
+});
+
+app.post('/api/attendance-feedback/:id/action', authenticate, async (req: any, res: any) => {
+  const feedback = db.prepare(`SELECT af.* FROM attendance_feedbacks af
+    JOIN conversations c ON c.id = af.conversation_id
+    WHERE af.id = ? AND af.tenant_id = ?`).get(req.params.id, req.user.tenantId) as any;
+  if (!feedback || !canAccessAttendanceFeedback(req, feedback.conversation_id)) return res.status(404).json({ error: 'Feedback nao encontrado ou sem permissao' });
+  const action = req.body?.action;
+  if (action !== 'dismissed' && action !== 'pdf_exported') return res.status(400).json({ error: 'Acao invalida' });
+  if (action === 'dismissed') db.prepare('UPDATE attendance_feedbacks SET dismissed_at = CURRENT_TIMESTAMP WHERE id = ?').run(feedback.id);
+  recordAudit(req.user.tenantId, req.user.id, `attendance_feedback.${action}`, 'attendance_feedbacks', feedback.id, { conversationId: feedback.conversation_id });
+  await commitDbChanges();
+  res.json({ success: true });
+});
+
 app.get('/api/ai/settings', authenticate, async (req: any, res: any) => {
   const { tenantId } = req.user;
-  if (!tenantId) return res.json({ enabled: 0, model: process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini', tone: '', company_context: '', business_rules: '', monthly_token_limit: 100000, current_usage: 0 });
+  if (!tenantId) return res.json({ enabled: 0, attendance_feedback_enabled: 1, attendance_feedback_prompt: DEFAULT_ATTENDANCE_FEEDBACK_PROMPT, automatic_closure_enabled: 0, automatic_closure_minutes: 1440, model: process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini', tone: '', company_context: '', business_rules: '', monthly_token_limit: 100000, current_usage: 0 });
   
   let settings = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
   if (!settings) {
@@ -1069,6 +1243,7 @@ app.get('/api/ai/settings', authenticate, async (req: any, res: any) => {
     await commitDbChanges();
   }
   
+  settings.attendance_feedback_prompt = settings.attendance_feedback_prompt || DEFAULT_ATTENDANCE_FEEDBACK_PROMPT;
   settings.current_usage = getTenantAiUsageThisMonth(tenantId);
   res.json(settings);
 });
@@ -1080,7 +1255,8 @@ app.patch('/api/ai/settings', authenticate, async (req: any, res: any) => {
 
   const { tenantId } = req.user;
   if (!tenantId) return res.status(400).json({ error: 'Tenant ID required' });
-  const { enabled, model, tone, company_context, business_rules, monthly_token_limit } = req.body;
+  const { enabled, attendance_feedback_enabled, attendance_feedback_prompt, automatic_closure_enabled, automatic_closure_minutes, model, tone, company_context, business_rules, monthly_token_limit } = req.body;
+  const closureMinutes = Math.max(5, Math.min(43200, Number(automatic_closure_minutes) || 1440));
   
   let existing = db.prepare('SELECT * FROM ai_settings WHERE tenant_id = ?').get(tenantId) as any;
   if (!existing) {
@@ -1089,10 +1265,14 @@ app.patch('/api/ai/settings', authenticate, async (req: any, res: any) => {
 
   db.prepare(`
     UPDATE ai_settings 
-    SET enabled = ?, model = ?, tone = ?, company_context = ?, business_rules = ?, monthly_token_limit = ?, updated_at = CURRENT_TIMESTAMP
+    SET enabled = ?, attendance_feedback_enabled = ?, attendance_feedback_prompt = ?, automatic_closure_enabled = ?, automatic_closure_minutes = ?, model = ?, tone = ?, company_context = ?, business_rules = ?, monthly_token_limit = ?, updated_at = CURRENT_TIMESTAMP
     WHERE tenant_id = ?
   `).run(
-    enabled ? 1 : 0, 
+    enabled ? 1 : 0,
+    attendance_feedback_enabled ? 1 : 0,
+    String(attendance_feedback_prompt || DEFAULT_ATTENDANCE_FEEDBACK_PROMPT).trim(),
+    automatic_closure_enabled ? 1 : 0,
+    closureMinutes,
     model || process.env.OPENAI_DEFAULT_MODEL || 'gpt-4o-mini', 
     tone || '', 
     company_context || '', 
@@ -1108,8 +1288,8 @@ app.patch('/api/ai/settings', authenticate, async (req: any, res: any) => {
 // Endpoint seguro para o MVP localStorage. A chave nunca é enviada ao navegador:
 // ela é lida exclusivamente de OPENAI_API_KEY no ambiente do servidor/Vercel.
 app.post('/api/mvp/ai', async (req: any, res: any) => {
-  const { action, lead, messages = [] } = req.body || {};
-  if (!['suggest_reply', 'summarize', 'classify'].includes(action)) {
+  const { action, lead, messages = [], feedbackPrompt } = req.body || {};
+  if (!['suggest_reply', 'summarize', 'classify', 'attendance_feedback'].includes(action)) {
     return res.status(400).json({ error: 'Ação de IA inválida' });
   }
   if (!process.env.OPENAI_API_KEY) {
@@ -1132,6 +1312,26 @@ app.post('/api/mvp/ai', async (req: any, res: any) => {
       });
       const clean = ai.text.replace(/^```json\s*/i, '').replace(/```\s*$/i, '').trim();
       return res.json(JSON.parse(clean));
+    }
+    if (action === 'attendance_feedback') {
+      const criteria = String(feedbackPrompt || DEFAULT_ATTENDANCE_FEEDBACK_PROMPT).trim();
+      const ai = await generateAiResponse({
+        system: `Analise a qualidade do atendimento seguindo estes criterios do administrador: ${criteria}. Baseie-se somente na conversa e retorne apenas JSON valido, sem markdown. Se os criterios nao pedirem nota, use score como null.`,
+        user: `${common}\nFormato: {"summary":"","positivePoints":[],"improvementPoints":[],"deviations":[],"recommendations":[],"score":null}`,
+        temperature: 0.2,
+      });
+      const parsed = parseAiJson(ai.text);
+      return res.json({
+        id: crypto.randomUUID(),
+        model: ai.model,
+        summary: String(parsed.summary || '').trim(),
+        positivePoints: parseJsonArray(parsed.positivePoints),
+        improvementPoints: parseJsonArray(parsed.improvementPoints),
+        deviations: parseJsonArray(parsed.deviations),
+        recommendations: parseJsonArray(parsed.recommendations),
+        score: parsed.score ?? null,
+        generatedAt: new Date().toISOString(),
+      });
     }
     const ai = await generateAiResponse({
       system: 'Classifique o lead comercialmente. Retorne apenas JSON válido, sem markdown.',
@@ -2126,9 +2326,72 @@ app.post('/api/meta/webhook-legacy', async (req: any, res: any) => {
 
 
 
+let automaticClosureSweepRunning = false;
+
+async function runAutomaticClosureSweep() {
+  if (automaticClosureSweepRunning) return { processed: 0, skipped: true };
+  automaticClosureSweepRunning = true;
+  let processed = 0;
+  let failed = 0;
+  try {
+    await ensureDatabaseReady();
+    const conversations = db.prepare(`SELECT c.* FROM conversations c
+      JOIN ai_settings settings ON settings.tenant_id = c.tenant_id
+      WHERE settings.enabled = 1
+        AND settings.attendance_feedback_enabled = 1
+        AND settings.automatic_closure_enabled = 1
+        AND c.status NOT IN ('closed', 'archived')
+        AND datetime(c.updated_at, '+' || settings.automatic_closure_minutes || ' minutes') <= CURRENT_TIMESTAMP
+        AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
+      ORDER BY c.updated_at ASC
+      LIMIT 25`).all() as any[];
+
+    for (const conversation of conversations) {
+      const closeResult = db.prepare(`UPDATE conversations
+        SET status = 'closed', closed_at = strftime('%Y-%m-%d %H:%M:%f', 'now'), closed_by = assigned_to,
+            close_reason = 'Encerramento automatico por inatividade', updated_at = CURRENT_TIMESTAMP
+        WHERE id = ? AND status NOT IN ('closed', 'archived')`).run(conversation.id);
+      if (!closeResult.changes) continue;
+
+      db.prepare(`INSERT INTO conversation_events (id, tenant_id, conversation_id, event_type, from_user_id, metadata)
+        VALUES (?, ?, ?, 'status_changed', ?, ?)`)
+        .run(crypto.randomUUID(), conversation.tenant_id, conversation.id, conversation.assigned_to || null, JSON.stringify({ status: 'closed', origin: 'automatic' }));
+      recordAudit(conversation.tenant_id, conversation.assigned_to || null, 'conversation.closed_automatically', 'conversations', conversation.id, { inactivity: true });
+      await commitDbChanges();
+
+      const closedConversation = db.prepare('SELECT * FROM conversations WHERE id = ?').get(conversation.id) as any;
+      try {
+        await generateAttendanceFeedback(closedConversation, 'automatic', conversation.assigned_to || null);
+        processed += 1;
+      } catch (error: any) {
+        failed += 1;
+        recordAttendanceFeedbackFailure(closedConversation, 'automatic', conversation.assigned_to || null, error?.message || 'Falha ao gerar feedback automatico');
+        await commitDbChanges();
+      }
+    }
+    return { processed, failed, skipped: false };
+  } finally {
+    automaticClosureSweepRunning = false;
+  }
+}
+
+app.get('/api/jobs/automatic-conversation-closure', async (req: any, res: any) => {
+  const cronSecret = process.env.CRON_SECRET;
+  if (!cronSecret) return res.status(503).json({ error: 'CRON_SECRET nao configurado' });
+  if (req.headers.authorization !== `Bearer ${cronSecret}`) return res.status(401).json({ error: 'Unauthorized' });
+  try {
+    res.json(await runAutomaticClosureSweep());
+  } catch (error: any) {
+    console.error('Automatic conversation closure failed', error);
+    res.status(500).json({ error: error?.message || 'Falha no encerramento automatico' });
+  }
+});
+
 app.use('/api', (req, res) => res.status(404).json({ error: 'API route not found' }));
 
 async function startServer() {
+
+  await ensureDatabaseReady();
 
   if (process.env.NODE_ENV !== "production") {
     const { createServer: createViteServer } = await import('vite');
@@ -2158,6 +2421,10 @@ async function startServer() {
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+  const automaticClosureTimer = setInterval(() => {
+    void runAutomaticClosureSweep().catch(error => console.error('Automatic conversation closure failed', error));
+  }, 5 * 60 * 1000);
+  automaticClosureTimer.unref();
 }
 
 export default app;

@@ -46,7 +46,7 @@ interface AppState {
   addConversation: (leadId: string, tenantId: string) => Promise<void>;
   addMessage: (conversationId: string, senderId: string, text: string) => Promise<void>;
   assignConversation: (conversationId: string, userId: string) => Promise<void>;
-  updateConversationStatus: (conversationId: string, status: Conversation['status'], closeReason?: string) => Promise<void>;
+  updateConversationStatus: (conversationId: string, status: Conversation['status'], closeReason?: string) => Promise<Conversation | undefined>;
   fetchMessages: (conversationId: string) => Promise<void>;
   createQuickReply: (title: string, text: string, category: string) => Promise<void>;
   updateQuickReply: (id: string, updates: Partial<QuickReply>) => Promise<void>;
@@ -137,7 +137,11 @@ export const useStore = create<AppState>()(
       fetchMessages: async () => undefined,
       addMessage: async (conversationId, senderId, text) => { set(state => ({ messages: [...state.messages, { id: generateId(), conversationId, senderId, text, createdAt: new Date().toISOString() }], conversations: state.conversations.map(c => c.id === conversationId ? { ...c, updatedAt: new Date().toISOString() } : c) })); },
       assignConversation: async (conversationId, userId) => { set(state => ({ conversations: state.conversations.map(c => c.id === conversationId ? { ...c, assignedTo: userId, status: 'assigned' } : c) })); },
-      updateConversationStatus: async (conversationId, status) => { set(state => ({ conversations: state.conversations.map(c => c.id === conversationId ? { ...c, status, updatedAt: new Date().toISOString() } : c) })); },
+      updateConversationStatus: async (conversationId, status) => {
+        const updatedAt = new Date().toISOString();
+        set(state => ({ conversations: state.conversations.map(c => c.id === conversationId ? { ...c, status, updatedAt } : c) }));
+        return get().conversations.find(c => c.id === conversationId);
+      },
       createQuickReply: async (title, text, category) => { const now = new Date().toISOString(); set(state => ({ quickReplies: [{ id: generateId(), tenantId: get().currentUser?.tenantId || 'tenant-1', title, text, category, active: true, createdAt: now, updatedAt: now }, ...state.quickReplies] })); },
       updateQuickReply: async (id, updates) => { set(state => ({ quickReplies: state.quickReplies.map(reply => reply.id === id ? { ...reply, ...updates, updatedAt: new Date().toISOString() } : reply) })); },
       deleteQuickReply: async id => { set(state => ({ quickReplies: state.quickReplies.filter(reply => reply.id !== id) })); },

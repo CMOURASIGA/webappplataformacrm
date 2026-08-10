@@ -240,6 +240,10 @@ ON pipeline_stages(pipeline_id, "order");
 CREATE TABLE IF NOT EXISTS ai_settings (
   tenant_id TEXT PRIMARY KEY,
   enabled BOOLEAN DEFAULT 0,
+  attendance_feedback_enabled BOOLEAN DEFAULT 1,
+  attendance_feedback_prompt TEXT,
+  automatic_closure_enabled BOOLEAN DEFAULT 0,
+  automatic_closure_minutes INTEGER DEFAULT 1440,
   model TEXT DEFAULT 'gpt-4o-mini',
   tone TEXT DEFAULT 'profissional, claro e cordial',
   company_context TEXT,
@@ -402,6 +406,36 @@ CREATE TABLE IF NOT EXISTS audit_logs (
   ip_address TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- AI quality feedback generated at the end of each attendance cycle.
+CREATE TABLE IF NOT EXISTS attendance_feedbacks (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  lead_id TEXT NOT NULL,
+  attendant_id TEXT,
+  closure_origin TEXT NOT NULL CHECK (closure_origin IN ('manual', 'automatic')),
+  conversation_closed_at DATETIME NOT NULL,
+  close_reason TEXT,
+  prompt_snapshot TEXT NOT NULL,
+  model TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  positive_points_json TEXT NOT NULL DEFAULT '[]',
+  improvement_points_json TEXT NOT NULL DEFAULT '[]',
+  deviations_json TEXT NOT NULL DEFAULT '[]',
+  recommendations_json TEXT NOT NULL DEFAULT '[]',
+  score_json TEXT,
+  viewed_at DATETIME,
+  dismissed_at DATETIME,
+  generated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE CASCADE,
+  FOREIGN KEY (attendant_id) REFERENCES users (id) ON DELETE SET NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_feedback_cycle ON attendance_feedbacks(conversation_id, conversation_closed_at);
+CREATE INDEX IF NOT EXISTS idx_attendance_feedback_tenant ON attendance_feedbacks(tenant_id, generated_at DESC);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_whatsapp_phone_number_unique
 ON whatsapp_connections(phone_number_id)

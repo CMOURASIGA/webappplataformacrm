@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
-import { Send, Sparkles, FileText, Activity, MessagesSquare, Search, X } from 'lucide-react';
+import { Send, Sparkles, FileText, Activity, MessagesSquare, Search, X, ClipboardCheck } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
@@ -8,6 +8,7 @@ import { cn } from '../../lib/utils';
 import { useSearchParams } from 'react-router-dom';
 
 import DOMPurify from 'dompurify';
+import { AttendanceFeedbackModal, type AttendanceFeedback } from '../../components/crm/AttendanceFeedbackModal';
 
 function textToHtml(value: string) {
   return DOMPurify.sanitize(
@@ -30,6 +31,21 @@ function getAiErrorMessage(error: unknown, action: string) {
   return `Nao foi possivel ${action}. Verifique a configuracao da IA e tente novamente.`;
 }
 
+const ATTENDANCE_FEEDBACK_STORAGE_KEY = 'crm-attendance-feedbacks';
+
+function storedAttendanceFeedbacks(): AttendanceFeedback[] {
+  try { return JSON.parse(localStorage.getItem(ATTENDANCE_FEEDBACK_STORAGE_KEY) || '[]'); } catch { return []; }
+}
+
+function saveAttendanceFeedback(feedback: AttendanceFeedback) {
+  const feedbacks = storedAttendanceFeedbacks().filter(item => item.id !== feedback.id);
+  localStorage.setItem(ATTENDANCE_FEEDBACK_STORAGE_KEY, JSON.stringify([...feedbacks, feedback]));
+}
+
+function attendanceFeedbackSettings() {
+  try { return JSON.parse(localStorage.getItem('crm-ai-settings') || '{}'); } catch { return {}; }
+}
+
 export default function Chat() {
   const [searchParams] = useSearchParams();
   const [filter, setFilter] = useState<'minhas' | 'fila' | 'todas' | 'abertas'>('minhas');
@@ -50,6 +66,7 @@ export default function Chat() {
   const fetchMessages = useStore(state => state.fetchMessages);
   const setLeadClassification = useStore(state => state.setLeadClassification);
   const addLeadHistory = useStore(state => state.addLeadHistory);
+  const logAction = useStore(state => state.logAction);
 
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -60,6 +77,9 @@ export default function Chat() {
   const [quickReplySearch, setQuickReplySearch] = useState('');
   const [operationError, setOperationError] = useState('');
   const [isAssigning, setIsAssigning] = useState(false);
+  const [isClosing, setIsClosing] = useState(false);
+  const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
+  const [attendanceFeedback, setAttendanceFeedback] = useState<{ data: AttendanceFeedback; dismissOnClose: boolean } | null>(null);
 
   const handleSuggestReply = async () => {
     if (!activeConversation) return;
@@ -191,6 +211,41 @@ export default function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages]);
 
+  useEffect(() => {
+    let running = false;
+    const closeInactiveConversations = async () => {
+      if (running) return;
+      const settings = attendanceFeedbackSettings();
+      if (settings.enabled === false || settings.attendanceFeedbackEnabled === false || !settings.automaticClosureEnabled) return;
+      running = true;
+      try {
+        const inactivityMs = Math.max(5, Number(settings.automaticClosureMinutes) || 1440) * 60_000;
+        const now = Date.now();
+        const state = useStore.getState();
+        const candidates = state.conversations.filter(conversation => conversation.status !== 'closed' && conversation.status !== 'archived' && now - new Date(conversation.updatedAt).getTime() >= inactivityMs);
+        for (const conversation of candidates) {
+          const conversationMessages = state.messages.filter(message => message.conversationId === conversation.id);
+          if (!conversationMessages.length) continue;
+          const lead = state.leads.find(item => item.id === conversation.leadId);
+          try {
+            const generated = await fetchApi('/mvp/ai', { method: 'POST', body: JSON.stringify({ action: 'attendance_feedback', lead, messages: conversationMessages, feedbackPrompt: settings.attendanceFeedbackPrompt }) });
+            const feedback: AttendanceFeedback = { ...generated, conversationId: conversation.id, closureOrigin: 'automatic', conversationClosedAt: new Date().toISOString() };
+            saveAttendanceFeedback(feedback);
+            await updateConversationStatus(conversation.id, 'closed', 'Encerramento automatico por inatividade');
+            logAction('attendance-feedback', 'GENERATED_AUTOMATICALLY', 'success', `Feedback automatico gerado para ${lead?.name || conversation.leadId}.`);
+          } catch (error) {
+            logAction('attendance-feedback', 'GENERATION_FAILED', 'error', error instanceof Error ? error.message : 'Falha no feedback automatico.');
+          }
+        }
+      } finally {
+        running = false;
+      }
+    };
+    void closeInactiveConversations();
+    const timer = window.setInterval(() => void closeInactiveConversations(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [conversations, logAction, updateConversationStatus]);
+
   if (!currentUser) return null;
 
   const handleSelectLead = async (leadId: string) => {
@@ -212,6 +267,43 @@ export default function Chat() {
       setOperationError(err instanceof Error ? err.message : 'Não foi possível assumir a conversa.');
     } finally {
       setIsAssigning(false);
+    }
+  };
+
+  const handleCloseConversation = async () => {
+    if (!activeConversation) return;
+    setIsClosing(true);
+    setOperationError('');
+    try {
+      await updateConversationStatus(activeConversation.id, 'closed', 'Resolvido');
+      const settings = attendanceFeedbackSettings();
+      if (settings.enabled === false || settings.attendanceFeedbackEnabled === false) throw new Error('O feedback de atendimento por IA nao esta habilitado.');
+      const generated = await fetchApi('/mvp/ai', { method: 'POST', body: JSON.stringify({ action: 'attendance_feedback', lead: activeLead, messages: activeMessages, feedbackPrompt: settings.attendanceFeedbackPrompt }) });
+      const feedback: AttendanceFeedback = { ...generated, conversationId: activeConversation.id, closureOrigin: 'manual', conversationClosedAt: new Date().toISOString() };
+      saveAttendanceFeedback(feedback);
+      logAction('attendance-feedback', 'GENERATED', 'success', `Feedback gerado para ${activeLead?.name || activeConversation.leadId}.`);
+      setAttendanceFeedback({ data: feedback, dismissOnClose: true });
+    } catch (error) {
+      logAction('attendance-feedback', 'GENERATION_FAILED', 'error', error instanceof Error ? error.message : 'Falha ao gerar feedback.');
+      setOperationError(`O atendimento foi encerrado, mas o feedback de IA nao foi gerado: ${error instanceof Error ? error.message : 'erro desconhecido'}`);
+    } finally {
+      setIsClosing(false);
+    }
+  };
+
+  const handleLoadAttendanceFeedback = async () => {
+    if (!activeConversation) return;
+    setIsFeedbackLoading(true);
+    setOperationError('');
+    try {
+      const data = storedAttendanceFeedbacks().filter(item => item.conversationId === activeConversation.id).sort((a, b) => +new Date(b.generatedAt) - +new Date(a.generatedAt))[0];
+      if (!data) throw new Error('Esta conversa ainda nao possui feedback de IA.');
+      logAction('attendance-feedback', 'VIEWED', 'success', `Feedback consultado para ${activeLead?.name || activeConversation.leadId}.`);
+      setAttendanceFeedback({ data, dismissOnClose: false });
+    } catch (error) {
+      setOperationError(error instanceof Error ? error.message : 'Nao foi possivel consultar o feedback.');
+    } finally {
+      setIsFeedbackLoading(false);
     }
   };
 
@@ -338,14 +430,19 @@ export default function Chat() {
                    </Button>
                 )}
                 {activeConversation && activeConversation.status !== 'closed' && (
-                   <Button variant="outline" size="sm" onClick={() => updateConversationStatus(activeConversation.id, 'closed', 'Resolvido')}>
-                     Encerrar
+                   <Button variant="outline" size="sm" onClick={handleCloseConversation} disabled={isClosing}>
+                     {isClosing ? 'Analisando...' : 'Encerrar'}
                    </Button>
                 )}
                 {activeConversation && activeConversation.status === 'closed' && (
-                   <Button variant="outline" size="sm" onClick={() => updateConversationStatus(activeConversation.id, 'reopened', '')}>
-                     Reabrir
-                   </Button>
+                  <>
+                    <Button variant="outline" size="sm" onClick={handleLoadAttendanceFeedback} disabled={isFeedbackLoading}>
+                      <ClipboardCheck size={14} className="mr-1" /> {isFeedbackLoading ? 'Carregando...' : 'Feedback IA'}
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={() => updateConversationStatus(activeConversation.id, 'reopened', '')}>
+                      Reabrir
+                    </Button>
+                  </>
                 )}
               </div>
             </div>
@@ -490,6 +587,15 @@ export default function Chat() {
           </div>
         )}
       </div>
+      {attendanceFeedback && activeLead && (
+        <AttendanceFeedbackModal
+          feedback={attendanceFeedback.data}
+          leadName={activeLead.name}
+          markDismissedOnClose={attendanceFeedback.dismissOnClose}
+          onAction={async action => logAction('attendance-feedback', action === 'pdf_exported' ? 'PDF_EXPORTED' : 'DISMISSED', 'success', `Acao registrada para ${activeLead.name}.`)}
+          onClose={() => setAttendanceFeedback(null)}
+        />
+      )}
     </div>
   );
 }

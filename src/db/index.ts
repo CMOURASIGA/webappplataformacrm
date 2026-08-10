@@ -173,6 +173,20 @@ function applySchemaAndSeed() {
     } catch {}
   }
 
+  const attendanceFeedbackSettingsColumns = [
+    "ALTER TABLE ai_settings ADD COLUMN attendance_feedback_enabled BOOLEAN DEFAULT 1",
+    "ALTER TABLE ai_settings ADD COLUMN attendance_feedback_prompt TEXT",
+    "ALTER TABLE ai_settings ADD COLUMN automatic_closure_enabled BOOLEAN DEFAULT 0",
+    "ALTER TABLE ai_settings ADD COLUMN automatic_closure_minutes INTEGER DEFAULT 1440",
+  ];
+
+  for (const statement of attendanceFeedbackSettingsColumns) {
+    try {
+      db.exec(statement);
+      changed = true;
+    } catch {}
+  }
+
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_leads_tenant_classification
       ON leads(tenant_id, classification);

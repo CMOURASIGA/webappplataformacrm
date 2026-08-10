@@ -8,6 +8,10 @@ export default function AiSettings() {
   const [tone, setTone] = useState('profissional, claro e cordial');
   const [companyContext, setCompanyContext] = useState('');
   const [businessRules, setBusinessRules] = useState('');
+  const [attendanceFeedbackEnabled, setAttendanceFeedbackEnabled] = useState(true);
+  const [attendanceFeedbackPrompt, setAttendanceFeedbackPrompt] = useState('');
+  const [automaticClosureEnabled, setAutomaticClosureEnabled] = useState(false);
+  const [automaticClosureMinutes, setAutomaticClosureMinutes] = useState(1440);
   const [monthlyTokenLimit, setMonthlyTokenLimit] = useState(100000);
   const [currentUsage, setCurrentUsage] = useState(0);
   const [notice, setNotice] = useState('');
@@ -19,12 +23,16 @@ export default function AiSettings() {
     setTone(data.tone || 'profissional, claro e cordial');
     setCompanyContext(data.companyContext || 'Atendimento comercial da Horizonte Empreendimentos.');
     setBusinessRules(data.businessRules || 'A IA sugere conteúdo, mas o atendente revisa antes do envio.');
+    setAttendanceFeedbackEnabled(data.attendanceFeedbackEnabled ?? true);
+    setAttendanceFeedbackPrompt(data.attendanceFeedbackPrompt || 'Avalie clareza, cordialidade, escuta ativa, entendimento da necessidade e conducao para o proximo passo. Informe pontos positivos, pontos a melhorar, desvios e recomendacoes.');
+    setAutomaticClosureEnabled(data.automaticClosureEnabled ?? false);
+    setAutomaticClosureMinutes(data.automaticClosureMinutes || 1440);
     setMonthlyTokenLimit(data.monthlyTokenLimit || 100000);
     setCurrentUsage(data.currentUsage || 1842);
   }, []);
 
   function save() {
-    localStorage.setItem('crm-ai-settings', JSON.stringify({ enabled, model, tone, companyContext, businessRules, monthlyTokenLimit, currentUsage }));
+    localStorage.setItem('crm-ai-settings', JSON.stringify({ enabled, model, tone, companyContext, businessRules, attendanceFeedbackEnabled, attendanceFeedbackPrompt, automaticClosureEnabled, automaticClosureMinutes, monthlyTokenLimit, currentUsage }));
     setNotice('Configurações salvas neste ambiente demonstrativo.');
   }
 
@@ -76,6 +84,43 @@ export default function AiSettings() {
             value={businessRules} 
             onChange={e => setBusinessRules(e.target.value)} 
           />
+        </div>
+
+        <div className="space-y-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div>
+            <h2 className="font-bold text-slate-800">Feedback de qualidade do atendimento</h2>
+            <p className="mt-1 text-xs text-slate-500">A IA analisa toda a conversa quando o atendimento e encerrado e mantem o resultado no historico.</p>
+          </div>
+
+          <label className="flex items-center gap-3">
+            <input type="checkbox" checked={attendanceFeedbackEnabled} onChange={event => setAttendanceFeedbackEnabled(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+            <span className="text-sm font-bold text-slate-700">Gerar feedback ao encerrar atendimentos</span>
+          </label>
+
+          <div>
+            <label className="mb-1 block text-sm font-bold text-slate-700">Criterios e orientacoes da analise</label>
+            <textarea
+              className="w-full rounded-md border border-slate-200 bg-white p-3 text-sm outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500"
+              rows={8}
+              value={attendanceFeedbackPrompt}
+              onChange={event => setAttendanceFeedbackPrompt(event.target.value)}
+              placeholder="Defina o que a IA deve avaliar, quais orientacoes devem ser verificadas e se deve apresentar uma nota."
+            />
+            <p className="mt-1 text-xs text-slate-500">A nota somente sera exibida se estes criterios solicitarem sua apresentacao.</p>
+          </div>
+
+          <label className="flex items-center gap-3">
+            <input type="checkbox" checked={automaticClosureEnabled} onChange={event => setAutomaticClosureEnabled(event.target.checked)} className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500" />
+            <span className="text-sm font-bold text-slate-700">Encerrar conversas automaticamente por inatividade</span>
+          </label>
+
+          {automaticClosureEnabled && (
+            <div>
+              <label className="mb-1 block text-sm font-bold text-slate-700">Tempo de inatividade em minutos</label>
+              <Input type="number" min={5} max={43200} value={automaticClosureMinutes} onChange={event => setAutomaticClosureMinutes(Number(event.target.value))} />
+              <p className="mt-1 text-xs text-slate-500">No encerramento automatico o feedback fica salvo para consulta, sem abrir uma janela para o atendente.</p>
+            </div>
+          )}
         </div>
 
         <div>
