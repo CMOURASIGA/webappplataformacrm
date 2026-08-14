@@ -41,7 +41,7 @@ export function AppLayout() {
     (t) => t.id === (isMaster ? activeTenantId : currentUser?.tenantId),
   );
 
-  const primaryColor = tenant?.settings?.primaryColor || "#4f46e5";
+  const primaryColor = tenant?.settings?.primaryColor || "#0B3A75";
   const sidebarColor = tenant?.settings?.sidebarColor || "#0F172A";
   const sidebarTextColor = tenant?.settings?.sidebarTextColor || "#cbd5e1";
 
