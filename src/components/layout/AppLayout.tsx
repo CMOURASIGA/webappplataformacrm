@@ -100,6 +100,12 @@ export function AppLayout() {
           icon: <MessageSquare size={16} />,
           adminOnly: true,
         },
+        {
+          name: "Chat interno",
+          href: "/internal-chat",
+          icon: <Users size={16} />,
+          adminOnly: false,
+        },
       ],
     },
     {

@@ -28,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT UNIQUE NOT NULL,
   password_hash TEXT NOT NULL,
   role TEXT NOT NULL, -- master, admin, user
+  can_import_leads INTEGER NOT NULL DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE
@@ -425,3 +426,128 @@ WHERE external_message_id IS NOT NULL;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_meta_data_deletion_confirmation_code
 ON meta_data_deletion_requests(confirmation_code);
+
+-- Epic 09: official service records, kept separate from external messages.
+CREATE TABLE IF NOT EXISTS lead_service_records (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  lead_id TEXT NOT NULL,
+  conversation_id TEXT,
+  attendant_id TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'external_conversation',
+  channel TEXT NOT NULL DEFAULT 'whatsapp',
+  started_at DATETIME NOT NULL,
+  ended_at DATETIME NOT NULL,
+  first_message_id TEXT,
+  last_message_id TEXT,
+  message_count INTEGER NOT NULL DEFAULT 0,
+  summary TEXT NOT NULL,
+  topics_json TEXT NOT NULL DEFAULT '[]',
+  needs_json TEXT NOT NULL DEFAULT '[]',
+  objections_json TEXT NOT NULL DEFAULT '[]',
+  decisions_json TEXT NOT NULL DEFAULT '[]',
+  pending_items_json TEXT NOT NULL DEFAULT '[]',
+  next_action TEXT,
+  next_action_due_at DATETIME,
+  sentiment TEXT,
+  ai_model TEXT,
+  generated_at DATETIME,
+  reviewed_by TEXT NOT NULL,
+  reviewed_at DATETIME NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE CASCADE,
+  FOREIGN KEY (conversation_id) REFERENCES conversations (id) ON DELETE SET NULL,
+  FOREIGN KEY (attendant_id) REFERENCES users (id) ON DELETE RESTRICT,
+  FOREIGN KEY (reviewed_by) REFERENCES users (id) ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_service_record_message_range ON lead_service_records(conversation_id, first_message_id, last_message_id) WHERE conversation_id IS NOT NULL AND first_message_id IS NOT NULL AND last_message_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_service_records_lead ON lead_service_records(tenant_id, lead_id, created_at DESC);
+
+-- Epic 09: internal collaboration never shares the external messages table.
+CREATE TABLE IF NOT EXISTS internal_channels (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  type TEXT NOT NULL CHECK(type IN ('direct', 'group', 'company', 'lead')),
+  lead_id TEXT,
+  created_by TEXT NOT NULL,
+  is_private INTEGER NOT NULL DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE RESTRICT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_internal_channel_lead ON internal_channels(tenant_id, lead_id) WHERE type = 'lead' AND lead_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS internal_channel_members (
+  id TEXT PRIMARY KEY,
+  channel_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
+  joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_read_at DATETIME,
+  FOREIGN KEY (channel_id) REFERENCES internal_channels (id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE,
+  UNIQUE(channel_id, user_id)
+);
+CREATE TABLE IF NOT EXISTS internal_messages (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  channel_id TEXT NOT NULL,
+  sender_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  reply_to_message_id TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  edited_at DATETIME,
+  deleted_at DATETIME,
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (channel_id) REFERENCES internal_channels (id) ON DELETE CASCADE,
+  FOREIGN KEY (sender_id) REFERENCES users (id) ON DELETE RESTRICT,
+  FOREIGN KEY (reply_to_message_id) REFERENCES internal_messages (id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_internal_messages_channel ON internal_messages(channel_id, created_at);
+CREATE TABLE IF NOT EXISTS internal_message_mentions (
+  id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  mentioned_user_id TEXT NOT NULL,
+  read_at DATETIME,
+  FOREIGN KEY (message_id) REFERENCES internal_messages (id) ON DELETE CASCADE,
+  FOREIGN KEY (mentioned_user_id) REFERENCES users (id) ON DELETE CASCADE,
+  UNIQUE(message_id, mentioned_user_id)
+);
+
+-- Epic 09: each import and source row remains traceable.
+CREATE TABLE IF NOT EXISTS lead_import_batches (
+  id TEXT PRIMARY KEY,
+  tenant_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  status TEXT NOT NULL,
+  total_rows INTEGER NOT NULL DEFAULT 0,
+  imported_rows INTEGER NOT NULL DEFAULT 0,
+  duplicate_rows INTEGER NOT NULL DEFAULT 0,
+  error_rows INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME,
+  settings_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (tenant_id) REFERENCES tenants (id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users (id) ON DELETE RESTRICT
+);
+CREATE TABLE IF NOT EXISTS lead_import_rows (
+  id TEXT PRIMARY KEY,
+  batch_id TEXT NOT NULL,
+  row_number INTEGER NOT NULL,
+  raw_data_json TEXT NOT NULL,
+  normalized_data_json TEXT,
+  status TEXT NOT NULL,
+  lead_id TEXT,
+  error_message TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (batch_id) REFERENCES lead_import_batches (id) ON DELETE CASCADE,
+  FOREIGN KEY (lead_id) REFERENCES leads (id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_import_rows_batch ON lead_import_rows(batch_id, row_number);

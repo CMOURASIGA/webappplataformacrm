@@ -8,6 +8,7 @@ import multer from 'multer';
 import fs from 'fs';
 import crypto from 'crypto';
 import dotenv from 'dotenv';
+import { registerEpic09Routes } from './src/server/epic09.js';
 
 // Prefer .env.local for local development, then fall back to .env.
 dotenv.config({ path: '.env.local' });
@@ -94,12 +95,12 @@ const authenticate = (req: any, res: any, next: any) => {
     const decoded = jwt.verify(token, JWT_SECRET) as any;
     
     // Verify user still exists in database
-    const user = db.prepare('SELECT id, role, tenant_id FROM users WHERE id = ?').get(decoded.id) as any;
+    const user = db.prepare('SELECT id, role, tenant_id, can_import_leads FROM users WHERE id = ?').get(decoded.id) as any;
     if (!user) {
       return res.status(401).json({ error: 'User no longer exists' });
     }
     
-    req.user = { id: user.id, role: user.role, tenantId: user.tenant_id };
+    req.user = { id: user.id, role: user.role, tenantId: user.tenant_id, canImportLeads: Boolean(user.can_import_leads) };
     
     // Master impersonation logic: if master provides a tenant ID header, use it
     if (req.user.role === 'master' && req.headers['x-tenant-id']) {
@@ -195,11 +196,11 @@ app.get('/api/users', authenticate, (req: any, res: any) => {
   const { tenantId, role } = req.user;
   
   if (role === 'master') {
-    const users = db.prepare('SELECT id, name, email, role, tenant_id FROM users').all();
+    const users = db.prepare('SELECT id, name, email, role, tenant_id, can_import_leads as canImportLeads FROM users').all();
     return res.json(users);
   }
   
-  const users = db.prepare('SELECT id, name, email, role FROM users WHERE tenant_id = ?').all(tenantId);
+  const users = db.prepare('SELECT id, name, email, role, can_import_leads as canImportLeads FROM users WHERE tenant_id = ?').all(tenantId);
   res.json(users);
 });
 
@@ -337,7 +338,7 @@ app.post('/api/auth/login', (req, res) => {
   if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
 
   const token = jwt.sign({ id: user.id, role: user.role, tenantId: user.tenant_id }, JWT_SECRET, { expiresIn: '24h' });
-  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id } });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role, tenantId: user.tenant_id, canImportLeads: Boolean(user.can_import_leads) } });
 });
 
 // Tenants (Master only)
@@ -2082,6 +2083,30 @@ app.post('/api/meta/webhook-legacy', async (req: any, res: any) => {
 });
 
 
+
+registerEpic09Routes(app, db, authenticate, commitDbChanges, async ({ tenantId, userId, conversation, messages }) => {
+  if (process.env.NODE_ENV === 'test') {
+    return {
+      model: 'epic09-test-model',
+      data: { summary: 'Previa gerada para teste', topics: [], needs: [], objections: [], decisions: [], pendingItems: [], nextAction: '', nextActionDueAt: null, sentiment: 'neutro' },
+    };
+  }
+  const settings = await ensureTenantCanUseAi(tenantId);
+  const system = `Voce e um assistente de CRM. Analise somente o ciclo informado e devolva apenas JSON valido, sem markdown.`;
+  const user = `Retorne exatamente as chaves: summary (string), topics (array), needs (array), objections (array), decisions (array), pendingItems (array), nextAction (string), nextActionDueAt (ISO ou null), sentiment (string).\nLead: ${JSON.stringify(conversation.lead)}\nMensagens do ciclo: ${JSON.stringify(messages.map((message: any) => ({ senderType: message.sender_type, text: message.text, createdAt: message.created_at })))}`;
+  const ai = await generateAiResponse({ system, user, model: settings.model, temperature: 0.2 });
+  let data: any;
+  try {
+    data = JSON.parse(ai.text.replace(/^```json/i, '').replace(/```$/i, '').trim());
+  } catch {
+    throw new Error('A IA retornou uma previa em formato invalido. Tente novamente.');
+  }
+  const usage = (ai.usage as any) || {};
+  db.prepare(`INSERT INTO ai_usage_logs (id, tenant_id, user_id, conversation_id, lead_id, action, model, input_tokens, output_tokens, total_tokens, status) VALUES (?, ?, ?, ?, ?, 'service_record_preview', ?, ?, ?, ?, 'success')`)
+    .run(crypto.randomUUID(), tenantId, userId, conversation.id, conversation.lead_id, ai.model, usage.prompt_tokens || 0, usage.completion_tokens || 0, usage.total_tokens || 0);
+  await commitDbChanges();
+  return { data, model: ai.model };
+});
 
 app.use('/api', (req, res) => res.status(404).json({ error: 'API route not found' }));
 

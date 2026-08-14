@@ -4,7 +4,9 @@ import path from 'path';
 import fs from 'fs';
 import bcrypt from 'bcryptjs';
 
-const sourceDbPath = path.join(process.cwd(), 'data.db');
+const sourceDbPath = process.env.CRM_DB_PATH
+  ? path.resolve(process.env.CRM_DB_PATH)
+  : path.join(process.cwd(), 'data.db');
 const schemaPath = path.join(process.cwd(), 'src', 'db', 'schema.sql');
 const blobPathname = 'crm/data.db';
 const blobToken = process.env.BLOB_READ_WRITE_TOKEN;
@@ -120,6 +122,11 @@ function applySchemaAndSeed() {
 
   try {
     db.exec("ALTER TABLE leads ADD COLUMN tags TEXT DEFAULT '[]'");
+    changed = true;
+  } catch {}
+
+  try {
+    db.exec("ALTER TABLE users ADD COLUMN can_import_leads INTEGER NOT NULL DEFAULT 0");
     changed = true;
   } catch {}
 
@@ -421,6 +428,10 @@ export async function persistDatabaseIfNeeded() {
 
 export function markDatabaseDirty() {
   dirty = true;
+}
+
+export function closeDatabase() {
+  closeConnection();
 }
 
 const db = new Proxy({} as Database.Database, {

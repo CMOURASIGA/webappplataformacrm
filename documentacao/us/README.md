@@ -17,6 +17,7 @@ Objetivo deste pacote:
 - [Epic 06 - Compatibilidade, qualidade e entrega](./epic-06-compatibilidade-qualidade.md)
 - [Epic 07 - Validacao fase 1](./epic-07-validacao-fase-1.md)
 - [Epic 08 - Manutencao dos indicadores e classificacao de leads](./epic-08-manutencao-classificacao-leads.md)
+- [Epic 09 - Importacao, chat interno e historico de atendimento de leads](./epic-09-importacao-chat-historico-leads.md)
 
 ## Leitura rapida
 
@@ -29,6 +30,7 @@ Prioridade sugerida:
 6. compatibilidade, testes e entrega;
 7. validacao fase 1 e estabilizacao do CRM;
 8. manutencao dos indicadores, classificacao e exportacao de leads.
+9. importacao de leads, chat interno e historico de atendimento por ciclo.
 
 ## Rastreabilidade
 
@@ -39,3 +41,4 @@ Prioridade sugerida:
 - Secoes 5, 15, 17, 20.6 e 23: Epic 05.
 - Secoes 16, 18, 21 e 22: Epic 06.
 - Validacoes de estabilizacao e evolucao operacional da demonstracao: Epic 07 e Epic 08.
+- Especificacao `especificacao_importacao_chat_historico_leads`: Epic 09.
