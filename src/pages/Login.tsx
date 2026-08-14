@@ -4,6 +4,9 @@ import { useStore } from '../store';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 
+const CONSULT_SERVICES_LOGO_URL =
+  'https://i.imgur.com/gxXnYsA.png';
+
 export default function Login() {
   const [email, setEmail] = useState('master@crm.com');
   const [password, setPassword] = useState('master123');
@@ -29,10 +32,12 @@ export default function Login() {
   return (
     <div className="min-h-screen bg-[#F1F5F9] flex flex-col justify-center py-12 sm:px-6 lg:px-8 font-sans">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center text-primary-600">
-          <div className="w-16 h-16 bg-primary-500 rounded-xl flex items-center justify-center text-white font-bold text-3xl shadow-lg shadow-primary-500">
-            C
-          </div>
+        <div className="flex justify-center">
+          <img
+            src={CONSULT_SERVICES_LOGO_URL}
+            alt="Consult Services"
+            className="h-20 w-48 object-contain"
+          />
         </div>
         <h2 className="mt-6 text-center text-3xl font-extrabold text-slate-900 tracking-tight">
           CRM Flow <span className="text-xl font-normal opacity-50">MVP</span>
