@@ -2,15 +2,63 @@
 @plugin "@tailwindcss/typography";
 
 @theme {
-  --color-primary-50: color-mix(in srgb, var(--primary-color, #4f46e5) 10%, white);
-  --color-primary-100: color-mix(in srgb, var(--primary-color, #4f46e5) 20%, white);
-  --color-primary-200: color-mix(in srgb, var(--primary-color, #4f46e5) 30%, white);
-  --color-primary-300: color-mix(in srgb, var(--primary-color, #4f46e5) 50%, white);
-  --color-primary-400: color-mix(in srgb, var(--primary-color, #4f46e5) 70%, white);
-  --color-primary-500: var(--primary-color, #4f46e5);
-  --color-primary-600: color-mix(in srgb, var(--primary-color, #4f46e5) 85%, black);
-  --color-primary-700: color-mix(in srgb, var(--primary-color, #4f46e5) 70%, black);
-  --color-primary-800: color-mix(in srgb, var(--primary-color, #4f46e5) 50%, black);
-  --color-primary-900: color-mix(in srgb, var(--primary-color, #4f46e5) 30%, black);
-  --color-primary: var(--primary-color, #4f46e5);
+  --color-primary-50: color-mix(in srgb, var(--primary-color, #0B3A75) 10%, white);
+  --color-primary-100: color-mix(in srgb, var(--primary-color, #0B3A75) 20%, white);
+  --color-primary-200: color-mix(in srgb, var(--primary-color, #0B3A75) 30%, white);
+  --color-primary-300: color-mix(in srgb, var(--primary-color, #0B3A75) 50%, white);
+  --color-primary-400: color-mix(in srgb, var(--primary-color, #0B3A75) 70%, white);
+  --color-primary-500: var(--primary-color, #0B3A75);
+  --color-primary-600: color-mix(in srgb, var(--primary-color, #0B3A75) 85%, black);
+  --color-primary-700: color-mix(in srgb, var(--primary-color, #0B3A75) 70%, black);
+  --color-primary-800: color-mix(in srgb, var(--primary-color, #0B3A75) 50%, black);
+  --color-primary-900: color-mix(in srgb, var(--primary-color, #0B3A75) 30%, black);
+  --color-primary: var(--primary-color, #0B3A75);
+}
+
+:root {
+  --consult-blue: #0B3A75;
+  --consult-sky: #1D9BF0;
+  --consult-border: #D7E7F7;
+  --consult-muted: #F8FAFC;
+}
+
+body {
+  background: var(--consult-muted);
+}
+
+@layer components {
+  .cs-page {
+    @apply mx-auto w-full max-w-7xl space-y-6 pb-12;
+  }
+
+  .cs-page-header {
+    @apply rounded-lg border bg-white px-5 py-4 shadow-sm;
+    border-color: var(--consult-border);
+  }
+
+  .cs-title {
+    @apply text-xl font-extrabold tracking-tight text-slate-950;
+  }
+
+  .cs-subtitle {
+    @apply mt-1 text-sm font-medium text-slate-500;
+  }
+
+  .cs-card {
+    @apply rounded-lg border bg-white shadow-sm;
+    border-color: var(--consult-border);
+  }
+
+  .cs-card-pad {
+    @apply p-5;
+  }
+
+  .cs-section-title {
+    @apply text-xs font-extrabold uppercase tracking-wider;
+    color: var(--consult-blue);
+  }
+
+  .cs-control {
+    @apply rounded-md border border-slate-300 bg-white text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-100;
+  }
 }
