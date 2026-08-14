@@ -47,7 +47,7 @@ export function AppLayout() {
     (t) => t.id === (isMaster ? activeTenantId : currentUser?.tenantId),
   );
 
-  const primaryColor = tenant?.settings?.primaryColor || "#4f46e5";
+  const primaryColor = tenant?.settings?.primaryColor || "#0B3A75";
   const sidebarColor = tenant?.settings?.sidebarColor || "#0F172A";
   const sidebarTextColor = tenant?.settings?.sidebarTextColor || "#cbd5e1";
 
@@ -312,7 +312,7 @@ export function AppLayout() {
             <h1 className="text-lg font-bold text-slate-800">
               {/* Optional header title or context could go here */}
             </h1>
-            <span className="px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-semibold">
+            <span className="px-2.5 py-0.5 rounded-full bg-primary-100 text-primary-700 text-xs font-semibold">
               Ambiente demonstrativo
             </span>
             <div className="hidden sm:block border-l border-slate-200 pl-4"><span className="block text-[10px] font-bold uppercase text-slate-400">Usuário autenticado</span><span className="block text-sm font-semibold text-slate-700">{currentUser.name}</span></div>
