@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { AuditLog, AutomationRule, Conversation, InternalChannel, InternalMessage, Lead, Message, Pipeline, QuickReply, Tenant, TenantTag, User } from './types';
 import { generateId } from './lib/utils';
-import { createDemoSnapshot, demoUsers } from './demoData';
+import { fetchApi } from './lib/api';
 
 interface AppState {
   currentUser: User | null;
@@ -60,15 +60,41 @@ interface AppState {
 
 const defaultAutomations: AutomationRule[] = [
   { id: 'auto-summary', tenantId: 'tenant-1', name: 'Registrar resumo no histórico', description: 'Cada resumo de IA é gravado automaticamente no histórico do lead.', enabled: true, trigger: 'ai_summary', action: 'save_history' },
-  { id: 'auto-idle', tenantId: 'tenant-1', name: 'Sinalizar lead sem ação', description: 'Adiciona uma sinalização visual quando o lead permanece sem movimentação.', enabled: true, trigger: 'stage_idle', delayHours: 24, action: 'attention_tag', lastRunAt: new Date().toISOString() },
+  { id: 'auto-idle', tenantId: 'tenant-1', name: 'Sinalizar lead sem ação', description: 'Adiciona uma sinalização visual quando o lead permanece sem movimentação.', enabled: true, trigger: 'stage_idle', delayHours: 24, action: 'attention_tag' },
   { id: 'auto-classify', tenantId: 'tenant-1', name: 'Classificar novos leads', description: 'Sugere prioridade após o primeiro atendimento.', enabled: false, trigger: 'new_lead', action: 'attention_tag' },
 ];
+
+const mapLead = (lead: any): Lead => ({
+  ...lead,
+  tenantId: lead.tenantId ?? lead.tenant_id,
+  stageId: lead.stageId ?? lead.stage_id,
+  pipelineId: lead.pipelineId ?? lead.pipeline_id,
+  assignedTo: lead.assignedTo ?? lead.assigned_to,
+  createdAt: lead.createdAt ?? lead.created_at,
+  updatedAt: lead.updatedAt ?? lead.updated_at,
+});
+
+const mapConversation = (conversation: any): Conversation => ({
+  ...conversation,
+  tenantId: conversation.tenantId ?? conversation.tenant_id,
+  leadId: conversation.leadId ?? conversation.lead_id,
+  assignedTo: conversation.assignedTo ?? conversation.assigned_to,
+  createdAt: conversation.createdAt ?? conversation.created_at,
+  updatedAt: conversation.updatedAt ?? conversation.updated_at,
+});
 
 export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       currentUser: null,
-      ...createDemoSnapshot(),
+      users: [],
+      tenants: [],
+      pipelines: [],
+      leads: [],
+      conversations: [],
+      messages: [],
+      quickReplies: [],
+      tags: [],
       automations: defaultAutomations,
       internalChannels: [],
       internalMessages: [],
@@ -79,76 +105,300 @@ export const useStore = create<AppState>()(
       activeTenantId: localStorage.getItem('activeTenantId'),
 
       login: async (email, password = '') => {
-        const normalizedEmail = email.trim().toLowerCase();
-        const user = demoUsers.find(item => item.email.toLowerCase() === normalizedEmail);
-        const validDemoAccess = Boolean(user && password.length >= 6);
-        if (!user || !validDemoAccess) {
-          set({ loginError: 'E-mail ou senha inválidos.' });
-          throw new Error('E-mail ou senha inválidos.');
+        try {
+          set({ loginError: null, initError: null });
+          const response = await fetchApi('/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
+          });
+          localStorage.setItem('token', response.token);
+          set({ currentUser: response.user, isInitialized: false, loginError: null });
+          await get().initializeData();
+        } catch (error: any) {
+          const message = error?.message || 'Não foi possível autenticar.';
+          localStorage.removeItem('token');
+          set({ currentUser: null, isInitialized: false, loginError: message });
+          throw error;
         }
-        localStorage.setItem('token', `mvp-${user.id}`);
-        set({ currentUser: { ...user }, loginError: null, isInitialized: false });
-        await get().initializeData();
       },
+
       logout: () => {
         localStorage.removeItem('token');
         localStorage.removeItem('activeTenantId');
-        set({ currentUser: null, activeTenantId: null, isInitialized: false, loginError: null });
+        set({
+          currentUser: null,
+          users: [],
+          tenants: [],
+          pipelines: [],
+          leads: [],
+          conversations: [],
+          messages: [],
+          quickReplies: [],
+          tags: [],
+          activeTenantId: null,
+          isInitialized: false,
+          initError: null,
+          loginError: null,
+        });
       },
+
       initializeData: async () => {
-        if (!get().currentUser) return;
-        // O MVP sempre recompõe a história comercial ao abrir uma nova sessão.
-        const snapshot = createDemoSnapshot();
-        set({ ...snapshot, automations: defaultAutomations, isInitialized: true, initError: null });
+        const { currentUser, activeTenantId } = get();
+        if (!currentUser) return;
+
+        const safeFetch = async <T,>(loader: () => Promise<T>, fallback: T): Promise<T> => {
+          try {
+            return await loader();
+          } catch (error) {
+            console.error('Initial data load failed:', error);
+            return fallback;
+          }
+        };
+
+        try {
+          if (currentUser.role === 'master') {
+            const tenants = await fetchApi('/admin/tenants');
+            if (!activeTenantId) {
+              set({ tenants, isInitialized: true, initError: null });
+              return;
+            }
+
+            const [settings, pipelines, leads, conversations, tags, quickReplies] = await Promise.all([
+              safeFetch(() => fetchApi('/tenant/settings'), null as any),
+              safeFetch(() => fetchApi('/pipelines'), []),
+              safeFetch(() => fetchApi('/leads'), []),
+              safeFetch(() => fetchApi('/conversations'), []),
+              safeFetch(() => fetchApi('/tags'), []),
+              safeFetch(() => fetchApi('/quick-replies'), []),
+            ]);
+
+            const nextTenants = settings ? tenants.map((tenant: Tenant) => tenant.id === activeTenantId ? {
+              ...tenant,
+              settings: {
+                companyName: settings.company_name,
+                primaryColor: settings.primary_color,
+                logoUrl: settings.logo_url,
+                sidebarColor: settings.sidebar_color,
+                sidebarTextColor: settings.sidebar_text_color,
+              },
+            } : tenant) : tenants;
+
+            set({
+              tenants: nextTenants,
+              pipelines,
+              leads: leads.map(mapLead),
+              conversations: conversations.map(mapConversation),
+              tags,
+              quickReplies,
+              isInitialized: true,
+              initError: null,
+            });
+            return;
+          }
+
+          const [settings, pipelines, leads, conversations, tags, quickReplies] = await Promise.all([
+            fetchApi('/tenant/settings'),
+            safeFetch(() => fetchApi('/pipelines'), []),
+            safeFetch(() => fetchApi('/leads'), []),
+            safeFetch(() => fetchApi('/conversations'), []),
+            safeFetch(() => fetchApi('/tags'), []),
+            safeFetch(() => fetchApi('/quick-replies'), []),
+          ]);
+
+          const tenant: Tenant = {
+            id: currentUser.tenantId as string,
+            name: settings.company_name,
+            status: 'active',
+            createdAt: new Date().toISOString(),
+            settings: {
+              companyName: settings.company_name,
+              primaryColor: settings.primary_color,
+              logoUrl: settings.logo_url,
+              sidebarColor: settings.sidebar_color,
+              sidebarTextColor: settings.sidebar_text_color,
+            },
+          };
+
+          set({
+            tenants: [tenant],
+            pipelines,
+            leads: leads.map(mapLead),
+            conversations: conversations.map(mapConversation),
+            tags,
+            quickReplies,
+            isInitialized: true,
+            initError: null,
+          });
+        } catch (error: any) {
+          console.error('Failed to initialize data:', error);
+          if (String(error?.message || '').toLowerCase().includes('unauthorized')) {
+            localStorage.removeItem('token');
+            set({ currentUser: null, isInitialized: false, initError: null });
+            return;
+          }
+          set({ initError: error?.message || 'Falha ao carregar dados.', isInitialized: false });
+          throw error;
+        }
       },
+
       setActiveTenantId: async id => {
         if (id) localStorage.setItem('activeTenantId', id);
         else localStorage.removeItem('activeTenantId');
-        set({ activeTenantId: id, isInitialized: true });
+        set({ activeTenantId: id, isInitialized: false, initError: null });
+        await get().initializeData();
       },
-      addTenant: async data => { set(state => ({ tenants: [...state.tenants, { ...data, id: generateId(), createdAt: new Date().toISOString(), status: 'active' }] })); },
-      updateTenantSettings: async (tenantId, settings) => { set(state => ({ tenants: state.tenants.map(t => t.id === tenantId ? { ...t, settings: { ...t.settings, ...settings } } : t) })); },
-      updateTenant: async (tenantId, updates) => { set(state => ({ tenants: state.tenants.map(t => t.id === tenantId ? { ...t, ...updates } : t) })); },
+
+      addTenant: async data => {
+        await fetchApi('/admin/tenants', { method: 'POST', body: JSON.stringify(data) });
+        const tenants = await fetchApi('/admin/tenants');
+        set({ tenants });
+      },
+
+      updateTenantSettings: async (tenantId, settings) => {
+        const persisted = await fetchApi('/tenant/settings', {
+          method: 'PATCH',
+          body: JSON.stringify({
+            company_name: settings.companyName,
+            primary_color: settings.primaryColor,
+            logo_url: settings.logoUrl,
+            sidebar_color: settings.sidebarColor,
+            sidebar_text_color: settings.sidebarTextColor,
+          }),
+        });
+        set(state => ({
+          tenants: state.tenants.map(tenant => tenant.id === tenantId ? {
+            ...tenant,
+            name: persisted.company_name || tenant.name,
+            settings: {
+              ...(tenant.settings || {}),
+              companyName: persisted.company_name,
+              primaryColor: persisted.primary_color,
+              logoUrl: persisted.logo_url,
+              sidebarColor: persisted.sidebar_color,
+              sidebarTextColor: persisted.sidebar_text_color,
+            },
+          } : tenant),
+        }));
+      },
+
+      updateTenant: async (tenantId, updates) => {
+        set(state => ({ tenants: state.tenants.map(t => t.id === tenantId ? { ...t, ...updates } : t) }));
+      },
+
       addUser: user => set(state => ({ users: [...state.users, { ...user, id: generateId() }] })),
       updateUser: (id, updates) => set(state => ({ users: state.users.map(user => user.id === id ? { ...user, ...updates } : user) })),
-      createTag: async (name, color) => { set(state => ({ tags: [{ id: generateId(), tenantId: get().activeTenantId || get().currentUser?.tenantId || 'tenant-1', name, color, createdAt: new Date().toISOString() }, ...state.tags] })); },
-      deleteTag: async id => { set(state => ({ tags: state.tags.filter(tag => tag.id !== id), leads: state.leads.map(lead => ({ ...lead, tags: lead.tags?.filter(tagId => tagId !== id) })) })); },
-      createStage: async (pipelineId, name, order) => { set(state => ({ pipelines: state.pipelines.map(p => p.id === pipelineId ? { ...p, stages: [...p.stages, { id: generateId(), name, order }] } : p) })); },
-      deleteStage: async id => { set(state => ({ pipelines: state.pipelines.map(p => ({ ...p, stages: p.stages.filter(stage => stage.id !== id) })) })); },
-      reorderStages: async (pipelineId, stageIds) => { set(state => ({ pipelines: state.pipelines.map(p => p.id === pipelineId ? { ...p, stages: stageIds.map((id, order) => ({ ...p.stages.find(stage => stage.id === id)!, order })) } : p) })); },
-      addLead: async lead => {
-        const id = generateId();
-        const createdAt = new Date().toISOString();
-        const newLead = { ...lead, id, createdAt, updatedAt: createdAt, attachments: [], history: [] } as Lead;
-        set(state => ({ leads: [newLead, ...state.leads], conversations: [{ id: generateId(), tenantId: lead.tenantId, leadId: id, status: 'unassigned', createdAt, updatedAt: createdAt }, ...state.conversations] }));
+
+      createTag: async (name, color) => {
+        const tag = await fetchApi('/tags', { method: 'POST', body: JSON.stringify({ name, color }) });
+        set(state => ({ tags: [tag, ...state.tags] }));
       },
-      updateLead: async (id, updates) => { set(state => ({ leads: state.leads.map(lead => lead.id === id ? { ...lead, ...updates, updatedAt: new Date().toISOString() } : lead) })); },
+      deleteTag: async id => {
+        await fetchApi(`/tags/${id}`, { method: 'DELETE' });
+        set(state => ({ tags: state.tags.filter(tag => tag.id !== id) }));
+      },
+      createStage: async (pipelineId, name, order) => {
+        await fetchApi(`/pipelines/${pipelineId}/stages`, { method: 'POST', body: JSON.stringify({ name, order }) });
+        const pipelines = await fetchApi('/pipelines');
+        set({ pipelines });
+      },
+      deleteStage: async id => {
+        await fetchApi(`/stages/${id}`, { method: 'DELETE' });
+        const pipelines = await fetchApi('/pipelines');
+        set({ pipelines });
+      },
+      reorderStages: async (pipelineId, stageIds) => {
+        await fetchApi(`/pipelines/${pipelineId}/stages/reorder`, { method: 'PATCH', body: JSON.stringify({ stage_ids: stageIds }) });
+        set(state => ({ pipelines: state.pipelines.map(p => p.id === pipelineId ? { ...p, stages: stageIds.map((id, order) => ({ ...p.stages.find(stage => stage.id === id)!, order })) } : p) }));
+      },
+
+      addLead: async lead => {
+        const saved = await fetchApi('/leads', {
+          method: 'POST',
+          body: JSON.stringify({
+            name: lead.name,
+            phone: lead.phone,
+            email: lead.email,
+            company: lead.company,
+            source: lead.source,
+            source_type: lead.sourceType || 'manual',
+            stage_id: lead.stageId,
+            pipeline_id: lead.pipelineId,
+            tags: lead.tags || [],
+            classification: lead.classification,
+          }),
+        });
+        const formatted = mapLead(saved);
+        set(state => ({ leads: [formatted, ...state.leads] }));
+        await get().addConversation(formatted.id, formatted.tenantId);
+      },
+      updateLead: async (id, updates) => {
+        const saved = await fetchApi(`/leads/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            name: updates.name,
+            phone: updates.phone,
+            email: updates.email,
+            company: updates.company,
+            source: updates.source,
+            source_type: updates.sourceType,
+            stage_id: updates.stageId,
+            tags: updates.tags,
+            notes: updates.notes,
+            classification: updates.classification,
+          }),
+        });
+        set(state => ({ leads: state.leads.map(lead => lead.id === id ? { ...lead, ...mapLead(saved) } : lead) }));
+      },
       setLeadClassification: (id, classification, details, classifiedAt) => set(state => ({ leads: state.leads.map(lead => lead.id === id ? { ...lead, classification, classificationDetails: details, classifiedAt: classifiedAt || new Date().toISOString() } : lead) })),
       moveLead: async (leadId, newStageId) => {
-        const leadBefore = get().leads.find(item => item.id === leadId);
-        const stage = get().pipelines.flatMap(p => p.stages).find(item => item.id === newStageId);
-        const previousStage = get().pipelines.flatMap(p => p.stages).find(item => item.id === leadBefore?.stageId);
-        set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, stageId: newStageId, updatedAt: new Date().toISOString(), attentionSince: undefined, history: [{ id: generateId(), type: 'stage_change', title: 'Mudança de etapa', content: `Lead movido de ${previousStage?.name || 'etapa anterior'} para ${stage?.name || 'nova etapa'}. Responsável: ${get().currentUser?.name || 'Usuário atual'}.`, createdAt: new Date().toISOString(), createdBy: get().currentUser?.id }, ...(lead.history || [])] } : lead) }));
+        await fetchApi(`/leads/${leadId}`, { method: 'PATCH', body: JSON.stringify({ stage_id: newStageId }) });
+        set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, stageId: newStageId, updatedAt: new Date().toISOString() } : lead) }));
       },
       addLeadHistory: (leadId, entry) => set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, history: [{ ...entry, id: generateId(), createdAt: new Date().toISOString() }, ...(lead.history || [])] } : lead) })),
       addLeadAttachment: (leadId, file) => set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, attachments: [...(lead.attachments || []), { id: generateId(), name: file.name, type: file.type || 'application/octet-stream', size: file.size, createdAt: new Date().toISOString() }] } : lead) })),
       removeLeadAttachment: (leadId, attachmentId) => set(state => ({ leads: state.leads.map(lead => lead.id === leadId ? { ...lead, attachments: lead.attachments?.filter(item => item.id !== attachmentId) } : lead) })),
-      addConversation: async (leadId, tenantId) => { set(state => ({ conversations: [{ id: generateId(), tenantId, leadId, status: 'unassigned', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }, ...state.conversations] })); },
-      fetchMessages: async () => undefined,
-      addMessage: async (conversationId, senderId, text) => { set(state => ({ messages: [...state.messages, { id: generateId(), conversationId, senderId, text, createdAt: new Date().toISOString() }], conversations: state.conversations.map(c => c.id === conversationId ? { ...c, updatedAt: new Date().toISOString() } : c) })); },
-      assignConversation: async (conversationId, userId) => { set(state => ({ conversations: state.conversations.map(c => c.id === conversationId ? { ...c, assignedTo: userId, status: 'assigned' } : c) })); },
-      updateConversationStatus: async (conversationId, status) => {
-        const updatedAt = new Date().toISOString();
-        set(state => ({ conversations: state.conversations.map(c => c.id === conversationId ? { ...c, status, updatedAt } : c) }));
-        return get().conversations.find(c => c.id === conversationId);
+
+      addConversation: async leadId => {
+        const saved = await fetchApi('/conversations', { method: 'POST', body: JSON.stringify({ lead_id: leadId }) });
+        const formatted = mapConversation(saved);
+        set(state => state.conversations.some(item => item.id === formatted.id) ? state : ({ conversations: [formatted, ...state.conversations] }));
       },
-      createQuickReply: async (title, text, category) => { const now = new Date().toISOString(); set(state => ({ quickReplies: [{ id: generateId(), tenantId: get().currentUser?.tenantId || 'tenant-1', title, text, category, active: true, createdAt: now, updatedAt: now }, ...state.quickReplies] })); },
-      updateQuickReply: async (id, updates) => { set(state => ({ quickReplies: state.quickReplies.map(reply => reply.id === id ? { ...reply, ...updates, updatedAt: new Date().toISOString() } : reply) })); },
-      deleteQuickReply: async id => { set(state => ({ quickReplies: state.quickReplies.filter(reply => reply.id !== id) })); },
+      fetchMessages: async conversationId => {
+        const raw = await fetchApi(`/conversations/${conversationId}/messages`);
+        const messages = raw.map((message: any) => ({ ...message, conversationId: message.conversation_id, senderId: message.sender_id, createdAt: message.created_at }));
+        set(state => ({ messages: [...state.messages.filter(message => message.conversationId !== conversationId), ...messages] }));
+      },
+      addMessage: async (conversationId, _senderId, text) => {
+        const raw = await fetchApi(`/conversations/${conversationId}/messages`, { method: 'POST', body: JSON.stringify({ text }) });
+        const message = { ...raw, conversationId: raw.conversation_id, senderId: raw.sender_id, createdAt: raw.created_at };
+        set(state => ({ messages: [...state.messages, message] }));
+      },
+      assignConversation: async (conversationId, userId) => {
+        const saved = await fetchApi(`/conversations/${conversationId}/assign`, { method: 'PATCH', body: JSON.stringify({ assigned_to: userId }) });
+        set(state => ({ conversations: state.conversations.map(item => item.id === conversationId ? { ...item, ...mapConversation(saved) } : item) }));
+      },
+      updateConversationStatus: async (conversationId, status, closeReason) => {
+        const saved = await fetchApi(`/conversations/${conversationId}/status`, { method: 'PATCH', body: JSON.stringify({ status, close_reason: closeReason }) });
+        const formatted = mapConversation(saved);
+        set(state => ({ conversations: state.conversations.map(item => item.id === conversationId ? { ...item, ...formatted } : item) }));
+        return formatted;
+      },
+
+      createQuickReply: async (title, text, category) => {
+        const reply = await fetchApi('/quick-replies', { method: 'POST', body: JSON.stringify({ title, text, category }) });
+        set(state => ({ quickReplies: [reply, ...state.quickReplies] }));
+      },
+      updateQuickReply: async (id, updates) => {
+        set(state => ({ quickReplies: state.quickReplies.map(reply => reply.id === id ? { ...reply, ...updates } : reply) }));
+      },
+      deleteQuickReply: async id => {
+        await fetchApi(`/quick-replies/${id}`, { method: 'DELETE' });
+        set(state => ({ quickReplies: state.quickReplies.filter(reply => reply.id !== id) }));
+      },
+
       createInternalChannel: async channel => {
         const item = { ...channel, id: generateId(), createdAt: new Date().toISOString() };
         set(state => ({ internalChannels: [item, ...state.internalChannels] }));
-        get().logAction('internal-chat', 'CREATE_INTERNAL_CHANNEL', 'success', `Canal ${item.name} criado.`);
       },
       addInternalMessage: async (channelId, text) => {
         const senderId = get().currentUser?.id;
