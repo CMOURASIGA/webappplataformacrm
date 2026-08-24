@@ -1,8 +1,8 @@
 import React from 'react';
-import { Menu, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
-import { Badge } from '../ui/Badge';
-import { Select } from '../ui/Select';
+import { Menu, PanelLeftClose, PanelLeftOpen, Building2, Check } from 'lucide-react';
+import { Button } from '../ui/Button';
 import { IconButton } from '../ui/IconButton';
+import { DropdownMenu } from '../ui/DropdownMenu';
 import { Avatar } from '../ui/Avatar';
 import { ContextHelp } from './ContextHelp';
 import type { Tenant, User } from '../../types';
@@ -22,6 +22,8 @@ export interface HeaderProps {
 /**
  * App Shell header — FRONTEND_SPEC §4 / NAVIGATION.md §4: prioritizes page context
  * (breadcrumb) over administrative info; tenant selector only renders for Master.
+ * Breadcrumb only renders when there is real depth (NAVIGATION.md §4) — a top-level
+ * page (e.g. "Painel") shows just its own title, no "CRM Flow /" prefix.
  */
 export function Header({
   breadcrumb,
@@ -34,8 +36,10 @@ export function Header({
   sidebarCollapsed,
   onToggleSidebar,
 }: HeaderProps) {
+  const activeTenant = tenants.find((t) => t.id === activeTenantId);
+
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-6">
+    <header className="flex h-16 shrink-0 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 sm:px-6">
       <div className="flex min-w-0 items-center gap-3">
         <IconButton label="Abrir menu" className="md:hidden" onClick={onOpenMobileMenu}>
           <Menu size={20} />
@@ -48,38 +52,44 @@ export function Header({
           {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
         </IconButton>
 
-        {breadcrumb ? (
+        {breadcrumb?.group ? (
           <nav aria-label="Trilha de navegação" className="min-w-0 truncate text-sm">
             <span className="font-medium text-slate-400">CRM Flow</span>
-            {breadcrumb.group && (
-              <>
-                <span className="mx-1.5 text-slate-300">/</span>
-                <span className="font-medium text-slate-400">{breadcrumb.group}</span>
-              </>
-            )}
+            <span className="mx-1.5 text-slate-300">/</span>
+            <span className="font-medium text-slate-400">{breadcrumb.group}</span>
             <span className="mx-1.5 text-slate-300">/</span>
             <span className="font-bold text-slate-800">{breadcrumb.page}</span>
           </nav>
         ) : (
-          <span className="cs-text-page-title truncate text-base">CRM Flow</span>
+          <span className="cs-text-page-title truncate text-base">{breadcrumb?.page || 'CRM Flow'}</span>
         )}
       </div>
 
-      <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-        <Badge variant="primary" className="hidden sm:inline-flex">Ambiente demonstrativo</Badge>
-
+      <div className="flex shrink-0 items-center gap-2 sm:gap-4">
         {isMaster && (
-          <Select
-            value={activeTenantId || ''}
-            onChange={(e) => onChangeActiveTenant(e.target.value || null)}
-            className="hidden h-9 max-w-[12rem] sm:block"
-            aria-label="Cliente ativo"
-          >
-            <option value="">-- Visão Master --</option>
-            {tenants.map((t) => (
-              <option key={t.id} value={t.id}>{t.name}</option>
-            ))}
-          </Select>
+          <DropdownMenu
+            align="right"
+            trigger={
+              <Button variant="outline" size="sm" className="gap-1.5">
+                <Building2 size={14} />
+                <span className="max-w-[6rem] truncate sm:max-w-[10rem]">
+                  {activeTenant ? activeTenant.name : 'Visão Master'}
+                </span>
+              </Button>
+            }
+            items={[
+              {
+                label: 'Visão Master (nenhum cliente)',
+                onSelect: () => onChangeActiveTenant(null),
+                icon: !activeTenantId ? <Check size={14} /> : undefined,
+              },
+              ...tenants.map((t) => ({
+                label: t.name,
+                onSelect: () => onChangeActiveTenant(t.id),
+                icon: activeTenantId === t.id ? <Check size={14} /> : undefined,
+              })),
+            ]}
+          />
         )}
 
         <ContextHelp />
