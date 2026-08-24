@@ -22,6 +22,7 @@ import Users from './pages/admin/Users';
 import AiSettings from './pages/settings/AiSettings';
 import WhatsAppSettings from './pages/settings/WhatsAppSettings';
 import Automations from './pages/settings/Automations';
+import StyleGuide from './pages/dev/StyleGuide';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
 import { useStore } from './store';
 
@@ -53,6 +54,8 @@ export default function App() {
           <Route path="master/dashboard" element={<RequireRole roles={['master']}><MasterDashboard /></RequireRole>} />
           <Route path="master/tenants" element={<RequireRole roles={['master']}><Tenants /></RequireRole>} />
           <Route path="master/ai-usage" element={<RequireRole roles={['master']}><AiUsage /></RequireRole>} />
+          {/* Internal reference for the Design System foundation (Fase 1). Not linked in navigation. */}
+          <Route path="dev/style-guide" element={<RequireRole roles={['master', 'admin']}><StyleGuide /></RequireRole>} />
         </Route>
       </Routes>
     </BrowserRouter>

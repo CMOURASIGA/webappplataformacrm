@@ -1,0 +1,72 @@
+import React, { useEffect } from 'react';
+import { X } from 'lucide-react';
+import { cn } from '../../lib/utils';
+import { IconButton } from './IconButton';
+
+export interface DrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title?: React.ReactNode;
+  description?: React.ReactNode;
+  children?: React.ReactNode;
+  footer?: React.ReactNode;
+  size?: 'sm' | 'md' | 'lg';
+}
+
+const sizeClasses = {
+  sm: 'w-full sm:w-96',
+  md: 'w-full sm:w-[28rem]',
+  lg: 'w-full sm:w-[36rem]',
+};
+
+/**
+ * Right-side drawer — Design System / FRONTEND_SPEC §6: use for contextual editing, lead
+ * lookup, tasks, notes, activities, simple registration and quick detail views.
+ */
+export function Drawer({ isOpen, onClose, title, description, children, footer, size = 'md' }: DrawerProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <div
+        className="fixed inset-0 bg-slate-900/30"
+        style={{ zIndex: 'var(--cs-z-overlay)' }}
+        onClick={onClose}
+        aria-hidden="true"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={title ? 'cs-drawer-title' : undefined}
+        className={cn(
+          'fixed inset-y-0 right-0 flex flex-col bg-white shadow-cs-lg',
+          sizeClasses[size]
+        )}
+        style={{ zIndex: 'var(--cs-z-drawer)' }}
+      >
+        {title && (
+          <div className="flex items-start justify-between gap-3 border-b border-slate-100 bg-slate-50/50 p-4">
+            <div className="min-w-0">
+              <h2 id="cs-drawer-title" className="truncate text-lg font-bold text-slate-900">{title}</h2>
+              {description && <p className="mt-0.5 text-sm text-slate-500">{description}</p>}
+            </div>
+            <IconButton label="Fechar" size="sm" onClick={onClose}>
+              <X size={18} />
+            </IconButton>
+          </div>
+        )}
+        <div className="flex-1 overflow-y-auto p-4">{children}</div>
+        {footer && <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-white p-4">{footer}</div>}
+      </div>
+    </>
+  );
+}
