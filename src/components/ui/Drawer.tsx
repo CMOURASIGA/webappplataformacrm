@@ -12,6 +12,10 @@ export interface DrawerProps {
   children?: React.ReactNode;
   footer?: React.ReactNode;
   size?: 'sm' | 'md' | 'lg';
+  /** Anchor edge. Defaults to 'right' (contextual editing/consulta). 'left' is used by the mobile nav drawer. */
+  side?: 'left' | 'right';
+  /** Omits the default padding on the body slot — used when children render their own full-bleed layout (e.g. mobile nav). */
+  unstyled?: boolean;
 }
 
 const sizeClasses = {
@@ -21,10 +25,11 @@ const sizeClasses = {
 };
 
 /**
- * Right-side drawer — Design System / FRONTEND_SPEC §6: use for contextual editing, lead
+ * Side drawer — Design System / FRONTEND_SPEC §6: use for contextual editing, lead
  * lookup, tasks, notes, activities, simple registration and quick detail views.
+ * Anchors right by default; `side="left"` is reserved for the mobile navigation drawer.
  */
-export function Drawer({ isOpen, onClose, title, description, children, footer, size = 'md' }: DrawerProps) {
+export function Drawer({ isOpen, onClose, title, description, children, footer, size = 'md', side = 'right', unstyled = false }: DrawerProps) {
   const panelRef = useRef<HTMLDivElement>(null);
 
   useFocusTrap(panelRef, isOpen);
@@ -55,7 +60,8 @@ export function Drawer({ isOpen, onClose, title, description, children, footer, 
         aria-labelledby={title ? 'cs-drawer-title' : undefined}
         tabIndex={-1}
         className={cn(
-          'fixed inset-y-0 right-0 flex flex-col bg-white shadow-cs-lg outline-none',
+          'fixed inset-y-0 flex flex-col bg-white shadow-cs-lg outline-none',
+          side === 'left' ? 'left-0' : 'right-0',
           sizeClasses[size]
         )}
         style={{ zIndex: 'var(--cs-z-drawer)' }}
@@ -71,7 +77,7 @@ export function Drawer({ isOpen, onClose, title, description, children, footer, 
             </IconButton>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto p-4">{children}</div>
+        <div className={cn('flex-1 overflow-y-auto', !unstyled && 'p-4')}>{children}</div>
         {footer && <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-white p-4">{footer}</div>}
       </div>
     </>
