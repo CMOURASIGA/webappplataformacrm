@@ -14,16 +14,22 @@
   --color-primary-900: color-mix(in srgb, var(--primary-color, #0B3A75) 30%, black);
   --color-primary: var(--primary-color, #0B3A75);
 
-  /* Secondary accent (whitelabel: --secondary-color) */
-  --color-secondary-50: color-mix(in srgb, var(--secondary-color, #1D9BF0) 10%, white);
-  --color-secondary-100: color-mix(in srgb, var(--secondary-color, #1D9BF0) 20%, white);
-  --color-secondary-200: color-mix(in srgb, var(--secondary-color, #1D9BF0) 30%, white);
-  --color-secondary-300: color-mix(in srgb, var(--secondary-color, #1D9BF0) 50%, white);
-  --color-secondary-400: color-mix(in srgb, var(--secondary-color, #1D9BF0) 70%, white);
-  --color-secondary-500: var(--secondary-color, #1D9BF0);
-  --color-secondary-600: color-mix(in srgb, var(--secondary-color, #1D9BF0) 85%, black);
-  --color-secondary-700: color-mix(in srgb, var(--secondary-color, #1D9BF0) 70%, black);
-  --color-secondary: var(--secondary-color, #1D9BF0);
+  /*
+   * Secondary accent — fixed Consult Services institutional blue.
+   * NOT a whitelabel field: useApplyTenantTheme only sets primaryColor,
+   * sidebarColor and sidebarTextColor today. Do not read a --secondary-color
+   * tenant variable here until secondaryColor actually exists in the
+   * whitelabel/tenant model (product decision, tracked separately).
+   */
+  --color-secondary-50: color-mix(in srgb, #1D9BF0 10%, white);
+  --color-secondary-100: color-mix(in srgb, #1D9BF0 20%, white);
+  --color-secondary-200: color-mix(in srgb, #1D9BF0 30%, white);
+  --color-secondary-300: color-mix(in srgb, #1D9BF0 50%, white);
+  --color-secondary-400: color-mix(in srgb, #1D9BF0 70%, white);
+  --color-secondary-500: #1D9BF0;
+  --color-secondary-600: color-mix(in srgb, #1D9BF0 85%, black);
+  --color-secondary-700: color-mix(in srgb, #1D9BF0 70%, black);
+  --color-secondary: #1D9BF0;
 
   /* Semantic state colors (fixed, do not follow whitelabel) */
   --color-success-50: #ECFDF5;

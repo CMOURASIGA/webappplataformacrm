@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Plus, Users, TrendingUp, DollarSign, Trash2, Pencil } from 'lucide-react';
+import { Mail, Plus, Users, TrendingUp, DollarSign, Trash2, Pencil, ChevronDown } from 'lucide-react';
 import {
   Button,
   IconButton,
@@ -211,6 +211,16 @@ export default function StyleGuide() {
             </TableRow>
           </TableBody>
         </Table>
+        <div className="flex items-center gap-2">
+          <span className="cs-text-caption">Trigger customizado (deve ser focável via Tab e operável via Enter):</span>
+          <DropdownMenu
+            trigger={<Button variant="outline" size="sm">Ações <ChevronDown size={14} /></Button>}
+            items={[
+              { label: 'Editar', onSelect: () => {}, icon: <Pencil size={14} /> },
+              { label: 'Excluir', onSelect: () => {}, icon: <Trash2 size={14} />, danger: true },
+            ]}
+          />
+        </div>
       </section>
 
       <section className="cs-card cs-card-pad space-y-3">

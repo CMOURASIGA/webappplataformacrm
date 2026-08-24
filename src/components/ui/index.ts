@@ -28,3 +28,4 @@ export * from './FilterBar';
 export * from './Tabs';
 export * from './Avatar';
 export * from './ErrorBoundary';
+export * from './useFocusTrap';

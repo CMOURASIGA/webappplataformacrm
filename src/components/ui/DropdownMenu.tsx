@@ -13,7 +13,8 @@ export interface DropdownMenuItem {
 
 export interface DropdownMenuProps {
   items: DropdownMenuItem[];
-  trigger?: React.ReactNode;
+  /** Must be a single interactive element (button, IconButton, etc.) — it receives onClick/aria-* via cloneElement. */
+  trigger?: React.ReactElement;
   triggerLabel?: string;
   align?: 'left' | 'right';
 }
@@ -45,7 +46,14 @@ export function DropdownMenu({ items, trigger, triggerLabel = 'Mais ações', al
   return (
     <div ref={containerRef} className="relative inline-block">
       {trigger ? (
-        <span onClick={() => setOpen((v) => !v)}>{trigger}</span>
+        React.cloneElement(trigger, {
+          onClick: (event: React.MouseEvent) => {
+            trigger.props.onClick?.(event);
+            setOpen((v) => !v);
+          },
+          'aria-expanded': open,
+          'aria-haspopup': 'menu',
+        })
       ) : (
         <IconButton label={triggerLabel} size="sm" onClick={() => setOpen((v) => !v)} aria-expanded={open} aria-haspopup="menu">
           <MoreHorizontal size={18} />

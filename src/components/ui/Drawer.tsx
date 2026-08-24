@@ -1,7 +1,8 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { IconButton } from './IconButton';
+import { useFocusTrap } from './useFocusTrap';
 
 export interface DrawerProps {
   isOpen: boolean;
@@ -24,6 +25,10 @@ const sizeClasses = {
  * lookup, tasks, notes, activities, simple registration and quick detail views.
  */
 export function Drawer({ isOpen, onClose, title, description, children, footer, size = 'md' }: DrawerProps) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useFocusTrap(panelRef, isOpen);
+
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -44,11 +49,13 @@ export function Drawer({ isOpen, onClose, title, description, children, footer, 
         aria-hidden="true"
       />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={title ? 'cs-drawer-title' : undefined}
+        tabIndex={-1}
         className={cn(
-          'fixed inset-y-0 right-0 flex flex-col bg-white shadow-cs-lg',
+          'fixed inset-y-0 right-0 flex flex-col bg-white shadow-cs-lg outline-none',
           sizeClasses[size]
         )}
         style={{ zIndex: 'var(--cs-z-drawer)' }}

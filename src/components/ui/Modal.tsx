@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { IconButton } from './IconButton';
+import { useFocusTrap } from './useFocusTrap';
 
 export interface ModalProps {
   isOpen: boolean;
@@ -28,13 +29,14 @@ const sizeClasses = {
 export function Modal({ isOpen, onClose, title, description, children, footer, size = 'md', disableOverlayClose }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
 
+  useFocusTrap(dialogRef, isOpen);
+
   useEffect(() => {
     if (!isOpen) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose();
     };
     document.addEventListener('keydown', onKeyDown);
-    dialogRef.current?.focus();
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [isOpen, onClose]);
 
