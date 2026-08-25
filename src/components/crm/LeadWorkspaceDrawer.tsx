@@ -31,7 +31,8 @@ interface LeadWorkspaceDrawerProps {
   onEdit: (lead: Lead) => void;
 }
 
-const classificationVariant: Record<NonNullable<Lead['classification']>, BadgeVariant> = {
+/** Shared with Chat.tsx (Fase 6) so classification always reads the same color everywhere. */
+export const classificationVariant: Record<NonNullable<Lead['classification']>, BadgeVariant> = {
   quente: 'danger',
   morno: 'warning',
   frio: 'info',

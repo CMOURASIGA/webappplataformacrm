@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
-import { Send, Sparkles, FileText, Activity, MessagesSquare, Search, X, ClipboardCheck } from 'lucide-react';
+import { Send, Sparkles, FileText, Activity, MessagesSquare, Search, X, ClipboardCheck, PanelRightOpen } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
+import { IconButton } from '../../components/ui/IconButton';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Badge } from '../../components/ui/Badge';
+import { Tag } from '../../components/ui/Tag';
 import { cn } from '../../lib/utils';
 import { useSearchParams } from 'react-router-dom';
 
 import DOMPurify from 'dompurify';
 import { AttendanceFeedbackModal, type AttendanceFeedback } from '../../components/crm/AttendanceFeedbackModal';
+import { LeadWorkspaceDrawer, classificationVariant } from '../../components/crm/LeadWorkspaceDrawer';
+import { LeadFormDrawer } from '../../components/crm/LeadFormDrawer';
+import type { Lead } from '../../types';
 
 function textToHtml(value: string) {
   return DOMPurify.sanitize(
@@ -57,7 +64,9 @@ export default function Chat() {
   const messages = useStore(state => state.messages);
   const pipelines = useStore(state => state.pipelines);
   const quickReplies = useStore(state => state.quickReplies);
-  
+  const tags = useStore(state => state.tags);
+  const users = useStore(state => state.users);
+
   const addMessage = useStore(state => state.addMessage);
   const assignConversation = useStore(state => state.assignConversation);
   const updateConversationStatus = useStore(state => state.updateConversationStatus);
@@ -80,6 +89,9 @@ export default function Chat() {
   const [isClosing, setIsClosing] = useState(false);
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   const [attendanceFeedback, setAttendanceFeedback] = useState<{ data: AttendanceFeedback; dismissOnClose: boolean } | null>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   const handleSuggestReply = async () => {
     if (!activeConversation) return;
@@ -173,6 +185,8 @@ export default function Chat() {
   const activeLead = activeLeadId ? tenantLeads.find(l => l.id === activeLeadId) : null;
   const activeConversation = activeLeadId ? tenantConversations.find(c => c.leadId === activeLeadId) : null;
   const activePipeline = activeLead ? pipelines.find(p => p.id === activeLead.pipelineId) : null;
+  const activeLeadTags = (activeLead?.tags || []).map(id => tags.find(tag => tag.id === id)).filter(Boolean);
+  const activeLeadAssignee = activeLead?.assignedTo ? users.find(u => u.id === activeLead.assignedTo) : undefined;
   
   const activeMessages = activeConversation ? messages.filter(m => m.conversationId === activeConversation.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
 
@@ -191,7 +205,15 @@ export default function Chat() {
   useEffect(() => {
     const view = searchParams.get('view');
     const lead = searchParams.get('lead');
-    if (lead && tenantLeads.some(item => item.id === lead)) setActiveLeadId(lead);
+    if (lead && tenantLeads.some(item => item.id === lead)) {
+      setActiveLeadId(lead);
+      // A deep link targets a specific lead regardless of which tab was last active.
+      // Without this, the "clamp to filtered list" effect below can immediately evict
+      // the just-selected lead if its conversation isn't under the current filter —
+      // e.g. opening /chat?lead=X (from the Lead Workspace's "Abrir atendimento" or a
+      // shared link) while still on "Minhas" would silently drop back to "nenhum lead".
+      if (canViewAll) setFilter('todas');
+    }
     if (view === 'minhas' || view === 'fila' || view === 'todas' || view === 'abertas') {
       setFilter(view);
     }
@@ -378,7 +400,8 @@ export default function Chat() {
       <div className="flex-1 flex flex-col">
         {activeLead ? (
           <>
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <div className="border-b border-slate-100 bg-slate-50/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold">
@@ -387,33 +410,16 @@ export default function Chat() {
                   <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-slate-800">{activeLead.name}</div>
-                  <div className="text-[11px] text-slate-500 font-medium">Ambiente demonstrativo</div>
-                  {activeLead.classification && (
-                    <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                      Classificacao: <span className="text-primary-700">{activeLead.classification}</span>
-                    </div>
-                  )}
-                </div>
-                
-                {activePipeline && (
-                  <div className="ml-4 pl-4 border-l border-slate-200">
-                    <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1">
-                      Funil: {activePipeline.name}
-                    </label>
-                    <select 
-                      value={activeLead.stageId}
-                      onChange={(e) => moveLead(activeLead.id, e.target.value)}
-                      className="text-xs border-slate-300 rounded px-2 py-1 bg-white focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      {activePipeline.stages.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-sm text-slate-800">{activeLead.name}</span>
+                    <IconButton label="Abrir Lead Workspace" size="sm" onClick={() => setWorkspaceOpen(true)}>
+                      <PanelRightOpen size={14} />
+                    </IconButton>
                   </div>
-                )}
+                  <div className="text-[11px] text-slate-500 font-medium">Ambiente demonstrativo</div>
+                </div>
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <Button variant="outline" size="sm" onClick={handleClassify} disabled={isAiLoading}>
                   <Activity size={14} className="mr-1" />
@@ -423,7 +429,7 @@ export default function Chat() {
                   <FileText size={14} className="mr-1" />
                   Registrar histórico
                 </Button>
-                
+
                 {activeConversation && (!activeConversation.assignedTo || activeConversation.status === 'unassigned' || activeConversation.status === 'new') && (
                    <Button variant="outline" size="sm" onClick={handleAssign} disabled={isAssigning}>
                      {isAssigning ? 'Assumindo...' : 'Assumir'}
@@ -445,6 +451,36 @@ export default function Chat() {
                   </>
                 )}
               </div>
+            </div>
+
+            {/* Contexto comercial do lead — Fase 6: visível durante a conversa, sem duplicar o
+                Lead Workspace. Etapa continua persistindo pelo mesmo moveLead já usado no Kanban. */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              {activeLead.classification ? (
+                <Badge variant={classificationVariant[activeLead.classification]} className="capitalize">{activeLead.classification}</Badge>
+              ) : (
+                <Badge variant="neutral">Não classificado</Badge>
+              )}
+              {activePipeline && (
+                <Select
+                  value={activeLead.stageId}
+                  onChange={(e) => moveLead(activeLead.id, e.target.value)}
+                  className="h-8 w-auto text-xs"
+                  aria-label="Etapa do funil"
+                >
+                  {activePipeline.stages.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </Select>
+              )}
+              <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600">
+                Responsável: {activeLeadAssignee?.name || 'Sem responsável'}
+              </span>
+              <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600">
+                Origem: {activeLead.source}
+              </span>
+              {activeLeadTags.map(tag => <Tag key={tag!.id} color={tag!.color}>{tag!.name}</Tag>)}
+            </div>
             </div>
 
             {operationError && (
@@ -596,6 +632,17 @@ export default function Chat() {
           onClose={() => setAttendanceFeedback(null)}
         />
       )}
+      <LeadWorkspaceDrawer
+        lead={activeLead || null}
+        isOpen={workspaceOpen}
+        onClose={() => setWorkspaceOpen(false)}
+        onEdit={lead => { setWorkspaceOpen(false); setEditingLead(lead); setIsEditFormOpen(true); }}
+      />
+      <LeadFormDrawer
+        isOpen={isEditFormOpen}
+        lead={editingLead}
+        onClose={() => { setIsEditFormOpen(false); setEditingLead(null); }}
+      />
     </div>
   );
 }

@@ -105,7 +105,7 @@ Permitir, conforme permissao:
 
 - abrir Lead Workspace;
 - mover etapa;
-- criar atividade;
+- ~~criar atividade;~~ **adiado** - ver `docs/crm-flow/03-platform/DATA_PERSISTENCE_MAP.md`. A tabela `tasks` existe no schema, mas nao ha rota `/api/tasks` nem qualquer escrita funcional hoje; implementar essa acao criaria uma segunda estrutura de falsa persistencia. Retomar quando a API de tasks existir.
 - adicionar nota;
 - visualizar responsavel e tags.
 

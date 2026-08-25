@@ -30,7 +30,7 @@ mostrava:
 |---|---|---|---|---|---|
 | Dados cadastrais (nome, telefone, email, empresa) | `leads` | `GET/POST/PATCH /api/leads` | `leads.name/phone/email/company` | **Real** | Em uso |
 | Origem (source/sourceType) | `leads` | `PATCH /api/leads/:id` | `leads.source`, `leads.source_type` | **Real** | Em uso |
-| Etapa (stageId) | `leads` | `PATCH /api/leads/:id`, `moveLead` | `leads.stage_id` | **Real** | Em uso (Kanban); ainda não exibida no Workspace |
+| Etapa (stageId) | `leads` | `PATCH /api/leads/:id`, `moveLead` | `leads.stage_id` | **Real** | Em uso (Kanban); exibida no cabeçalho do Lead Workspace desde a Fase 5 |
 | Responsável (assignedTo) | `leads` (`mapLead`) | lido via `GET /api/leads` (`assigned_to`) | `leads.assigned_to` | **Real** | Lido desde a Fase 4 (card Kanban); **sem UI de atribuição** — nunca é escrito pelo frontend hoje |
 | Tags | `leads` | `PATCH /api/leads/:id` | `leads.tags` (JSON) | **Real** | Em uso |
 | Classificação (frio/morno/quente) | `leads` | `PATCH /api/leads/:id` | `leads.classification` | **Real** | Em uso |
