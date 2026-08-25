@@ -37,21 +37,27 @@ export default function Kanban() {
   if (!currentUser) return null;
 
   const isMaster = currentUser.role === 'master';
-  const canConfigurePipeline = isMaster || currentUser.role === 'admin';
   const tenantId = isMaster ? activeTenantId : currentUser.tenantId;
+  // Configuring a pipeline always targets a specific tenant. Admin always has one;
+  // Master only has one once a client is selected in "Visão Master" — with no
+  // tenant selected there is nothing concrete to configure yet.
+  const canConfigurePipeline = currentUser.role === 'admin' || (isMaster && !!tenantId);
 
   const pipeline = pipelines.find(p => p.tenantId === tenantId);
 
   if (!pipeline) {
+    const noTenantSelected = isMaster && !tenantId;
     return (
       <div className="cs-page">
         <PageHeader title="Funil de leads" />
         <EmptyState
-          title="Nenhum funil configurado"
+          title={noTenantSelected ? 'Nenhum cliente selecionado' : 'Nenhum funil configurado'}
           description={
-            canConfigurePipeline
-              ? 'Configure as etapas do funil comercial para começar a organizar os leads.'
-              : 'O funil comercial deste cliente ainda não foi configurado. Fale com um administrador.'
+            noTenantSelected
+              ? 'Selecione um cliente para visualizar ou configurar o funil.'
+              : canConfigurePipeline
+                ? 'Configure as etapas do funil comercial para começar a organizar os leads.'
+                : 'O funil comercial deste cliente ainda não foi configurado. Fale com um administrador.'
           }
           action={canConfigurePipeline ? <Button size="sm" onClick={() => navigate('/settings/kanban')}>Configurar funil</Button> : undefined}
         />

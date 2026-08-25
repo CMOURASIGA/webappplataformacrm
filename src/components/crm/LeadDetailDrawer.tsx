@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, History, MessageCircleMore, Paperclip, Trash2 } from 'lucide-react';
+import { FileText, History, MessageCircleMore, Paperclip } from 'lucide-react';
 import { useStore } from '../../store';
 import { Drawer } from '../ui/Drawer';
 import { Tabs } from '../ui/Tabs';
 import { Button } from '../ui/Button';
-import { IconButton } from '../ui/IconButton';
 import { Tag } from '../ui/Tag';
 import { EmptyState } from '../ui/EmptyState';
 import type { Lead } from '../../types';
@@ -31,8 +30,6 @@ export function LeadDetailDrawer({ lead, isOpen, onClose, onEdit }: LeadDetailDr
   const internalChannels = useStore(state => state.internalChannels);
   const internalMessages = useStore(state => state.internalMessages);
   const users = useStore(state => state.users);
-  const addLeadAttachment = useStore(state => state.addLeadAttachment);
-  const removeLeadAttachment = useStore(state => state.removeLeadAttachment);
 
   if (!lead) return null;
 
@@ -70,29 +67,24 @@ export function LeadDetailDrawer({ lead, isOpen, onClose, onEdit }: LeadDetailDr
       {tab === 'history' && (
         <div className="space-y-4">
           <section className="cs-card cs-card-pad">
-            <div className="flex items-center justify-between">
-              <h3 className="cs-text-label flex items-center gap-2"><Paperclip size={16} /> Anexos</h3>
-              <label className="cursor-pointer rounded-md bg-primary-600 px-3 py-2 text-xs font-bold text-white">
-                Adicionar arquivo
-                <input className="hidden" type="file" onChange={event => { const file = event.target.files?.[0]; if (file) addLeadAttachment(lead.id, file); event.currentTarget.value = ''; }} />
-              </label>
-            </div>
+            <h3 className="cs-text-label flex items-center gap-2"><Paperclip size={16} /> Anexos</h3>
+            {/*
+              Somente leitura de propósito: lead.attachments hoje só existe no estado
+              local (Zustand), sem persistência via API — some ao recarregar a página.
+              Não oferecer "Adicionar"/"Remover" aqui evita sugerir uma durabilidade que
+              não existe. Tratar a persistência real é dívida funcional para a Fase 5.
+            */}
             <div className="mt-4 space-y-2">
               {(lead.attachments || []).map(file => (
-                <div key={file.id} className="flex items-center justify-between rounded-lg border border-slate-200 p-3">
-                  <div className="flex items-center gap-2">
-                    <FileText className="text-primary-500" size={18} />
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">{file.name}</p>
-                      <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB, {new Date(file.createdAt).toLocaleDateString('pt-BR')}</p>
-                    </div>
+                <div key={file.id} className="flex items-center gap-2 rounded-lg border border-slate-200 p-3">
+                  <FileText className="text-primary-500" size={18} />
+                  <div>
+                    <p className="text-sm font-semibold text-slate-800">{file.name}</p>
+                    <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB, {new Date(file.createdAt).toLocaleDateString('pt-BR')}</p>
                   </div>
-                  <IconButton label="Remover anexo" size="sm" variant="danger" onClick={() => removeLeadAttachment(lead.id, file.id)}>
-                    <Trash2 size={16} />
-                  </IconButton>
                 </div>
               ))}
-              {!lead.attachments?.length && <p className="cs-text-helper py-4 text-center">Nenhum arquivo vinculado.</p>}
+              {!lead.attachments?.length && <p className="cs-text-helper py-4 text-center">Nenhum arquivo vinculado ainda. O upload de anexos será disponibilizado quando a persistência estiver pronta.</p>}
             </div>
           </section>
           <section className="cs-card cs-card-pad">
