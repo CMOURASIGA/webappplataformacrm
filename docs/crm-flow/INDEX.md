@@ -21,6 +21,7 @@
 ## Plataforma
 
 - [PLATFORM_RULES.md](./03-platform/PLATFORM_RULES.md) - multitenancy, autorizacao, seguranca, whitelabel, auditoria e APIs.
+- [DATA_PERSISTENCE_MAP.md](./03-platform/DATA_PERSISTENCE_MAP.md) - mapa de persistencia por feature (store, API, banco), usado para decidir o que o frontend pode apresentar como funcionalidade oficial.
 
 ## Inteligencia Artificial
 

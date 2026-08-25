@@ -12,7 +12,7 @@ import { Tag } from '../../components/ui/Tag';
 import { Table, TableHead, TableBody, TableRow, TableHeaderCell, TableCell } from '../../components/ui/Table';
 import { EmptyState } from '../../components/ui/EmptyState';
 import { LeadFormDrawer } from '../../components/crm/LeadFormDrawer';
-import { LeadDetailDrawer } from '../../components/crm/LeadDetailDrawer';
+import { LeadWorkspaceDrawer } from '../../components/crm/LeadWorkspaceDrawer';
 import { LeadImportModal } from '../../components/crm/LeadImportModal';
 
 type ClassificationFilter = 'all' | 'unclassified' | NonNullable<Lead['classification']>;
@@ -251,7 +251,7 @@ export default function LeadsList() {
 
       <LeadFormDrawer isOpen={isFormOpen} lead={editingLead} onClose={() => { setIsFormOpen(false); setEditingLead(null); }} />
 
-      <LeadDetailDrawer
+      <LeadWorkspaceDrawer
         lead={detailLead}
         isOpen={!!detailLead}
         onClose={() => setDetailLeadId(null)}
