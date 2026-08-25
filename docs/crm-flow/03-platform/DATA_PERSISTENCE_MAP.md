@@ -44,6 +44,8 @@ mostrava:
 | Atividades / tarefas do lead | não existe no store | nenhuma rota `/api/tasks` | tabela `tasks` existe (`lead_id`, `due_at`, `status`, `priority`, ...) | **Tabela pronta, sem API nem store** | Não implementado. A existência da tabela não caracteriza a feature como pronta. Gap de produto para priorização futura (não é frontend). |
 | Badge "Requer atenção" (`attentionSince` + automação `stage_idle`) | `automations` (seed fixo) + `lead.attentionSince` | nenhuma | **nenhuma coluna `attention_since` no schema** | **Inerte em produção** | O campo nunca é enviado pela API real — o badge só aparece no ambiente `demo/localstorage`, que tem seed próprio. No app real (API-backed) esse comportamento nunca dispara hoje. |
 | Regras de automação (Configurações → Automações) | `saveAutomation` / `deleteAutomation` — só `set()`, seed fixo (`defaultAutomations`) | nenhuma | nenhuma | **Sessão/local** | Qualquer edição feita em Configurações → Automações se perde ao recarregar a página. Fora do escopo de frontend desta fase; registrado aqui como prioridade alta de backlog técnico. |
+| Resumo de IA do atendimento (`handleSummarize`, Chat) | nenhum (estado local do componente `aiSummary`/`summarizedMessageIds`) | `POST /mvp/ai` (só gera o texto, não grava nada) | nenhuma | **Sessão/local** | Fase 6: parou de gravar em `lead.history` via `addLeadHistory` (ver §4.8). O resumo gerado só existe enquanto a conversa está aberta; recarregar a página perde o resumo e o controle de quais mensagens já foram resumidas. |
+| Feedback de atendimento (`AttendanceFeedbackModal`) | não usa o store — `localStorage` direto (`ATTENDANCE_FEEDBACK_STORAGE_KEY = 'crm-attendance-feedbacks'`, funções `storedAttendanceFeedbacks`/`saveAttendanceFeedback`/`attendanceFeedbackSettings` em `Chat.tsx`) | `POST /mvp/ai` (só gera o texto do feedback) | nenhuma | **Local (localStorage do navegador)** | Identificado na revisão da Fase 6. Sobrevive a reload (ao contrário do resto desta tabela, que é só Zustand em memória), mas é por navegador/dispositivo — não sincroniza entre atendentes nem aparece em nenhum relatório real. Não corrigido nesta fase (fora de escopo, ver `MIGRATION_PLAN.md` Fase 6); registrado aqui para avaliação futura. |
 
 ## 4. Decisões tomadas a partir deste mapa (Fase 5 — Lead Workspace)
 
@@ -69,6 +71,21 @@ mostrava:
 7. **Tasks/atividades** e **automações** não foram implementadas ou
    corrigidas nesta fase — permanecem registradas aqui como dívidas.
 
+## 4.1 Decisões tomadas a partir deste mapa (Fase 6 — Atendimento integrado)
+
+8. **`handleSummarize` (resumo de IA do atendimento) parou de usar
+   `lead.history` como se fosse persistência real.** Antes, o Chat lia
+   `activeLead.history` para saber quais mensagens já tinham sido
+   resumidas e chamava `addLeadHistory(...)` para gravar o resumo como
+   "Resumo do atendimento" — tratando uma estrutura de sessão como
+   histórico oficial do relacionamento. Agora: o resumo gerado pela IA
+   continua disponível na sessão (estado local do componente), o
+   controle de "mensagens já resumidas" usa um `Set` local por sessão
+   (`summarizedMessageIds`, zerado a cada troca de lead), e nada é mais
+   gravado em `lead.history`. Nenhuma API nova foi criada. A estrutura
+   `addLeadHistory` continua existindo em `store.ts` por compatibilidade,
+   apenas não é mais chamada por este fluxo.
+
 ## 5. Backlog técnico identificado
 
 - **Prioridade alta**: persistência de regras de automação
@@ -85,3 +102,16 @@ mostrava:
 - **Observação**: o badge "Requer atenção" do Kanban depende de um campo
   (`attentionSince`) que a API nunca envia — hoje é efetivamente um recurso
   morto em produção, ativo apenas no ambiente de demonstração.
+- **Prioridade média**: resumo/histórico persistente de atendimento. Hoje
+  o resumo gerado por IA (`handleSummarize`, Chat) só existe na sessão do
+  navegador — útil como apoio imediato ao atendente, mas não vira um
+  registro consultável depois. Se o produto quiser um "histórico de
+  atendimento" de verdade, precisa de tabela + API próprias (não
+  reaproveitar `lead.history`), com o mesmo cuidado deste documento: só
+  promover como funcionalidade oficial o que for realmente persistido.
+- **Prioridade a avaliar**: feedback de atendimento (`AttendanceFeedbackModal`)
+  grava em `localStorage` do navegador em vez de no backend. Sobrevive a
+  reload, mas é local por dispositivo/atendente — não aparece em nenhum
+  relatório real nem sincroniza entre quem atende o mesmo lead em
+  dispositivos diferentes. Identificado na revisão da Fase 6; não corrigido
+  (fora de escopo) — decisão de produto pendente sobre persistir via API.
