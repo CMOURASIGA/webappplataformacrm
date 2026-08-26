@@ -443,7 +443,10 @@ export default function Chat() {
                       <PanelRightOpen size={14} />
                     </IconButton>
                   </div>
-                  <div className="text-[11px] text-slate-500 font-medium">Ambiente demonstrativo</div>
+                  {/* Removido texto fixo "Ambiente demonstrativo" — não é mais verdade
+                      fora da branch demo/localstorage e não fingimos um status de
+                      presença/canal que a API não fornece. */}
+                  <div className="text-[11px] text-slate-500 font-medium">{activeLead.phone}</div>
                 </div>
               </div>
 

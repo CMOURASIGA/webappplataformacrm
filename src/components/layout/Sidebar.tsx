@@ -49,21 +49,38 @@ function SidebarContent({
   const showClientContext = !isMaster || !!activeTenantId;
   const clientName = tenant?.settings?.companyName || tenant?.name || 'Cliente';
 
+  const logoUrl = tenant?.settings?.logoUrl;
+
   return (
     <div className="flex h-full flex-col">
       {/*
-        Bloco de marca (Fase 6.5 — App Shell/identidade visual). A marca "Consult
-        Services / CRM Flow" é fixa e sempre aparece aqui, independente de whitelabel —
-        ela identifica o produto. O tenant (nome + logo do cliente, quando houver)
-        aparece como um card secundário logo abaixo, nunca substituindo a marca do
-        produto (ver DATA_PERSISTENCE_MAP/DESIGN_SYSTEM §3 — whitelabel convive com a
-        identidade da plataforma, não a apaga).
+        Bloco de marca (Fase 6.5, revisado após comparação lado a lado com o 7Commander
+        real). Duas zonas visualmente distintas, como no 7Commander:
+        - Zona de marca (esta): fundo neutro FIXO (branco), nunca tingido pelo whitelabel
+          do tenant — é onde o logo do cliente, quando existir, aparece grande e em
+          destaque (a identidade que o cliente reconhece), com a marca "CRM Flow /
+          Consult Services" sempre presente logo abaixo, em texto — nunca escondida
+          nem substituída. Sem logo customizado, mostra a marca da Consult Services no
+          lugar do logo (não deixa a zona vazia).
+        - Zona de navegação (nav/footer abaixo): essa sim segue as cores de whitelabel
+          (--sidebar-color/--sidebar-text-color), igual ao 7Commander recolorindo só o
+          menu, não o card de marca.
       */}
-      <div className="border-b border-white/10 p-4">
+      <div className="border-b border-slate-200 bg-white p-4">
+        {logoUrl && !collapsed ? (
+          <div className="mb-3 flex min-h-[72px] items-center justify-center rounded-lg border border-slate-200 bg-white p-3">
+            <img src={logoUrl} alt={clientName} className="max-h-14 w-auto object-contain" />
+          </div>
+        ) : null}
+
         <div className={cn('flex items-center gap-3', collapsed && 'justify-center')}>
-          {collapsed ? (
+          {logoUrl && !collapsed ? null : collapsed ? (
             <Tooltip content="CRM Flow — Consult Services" side="right">
-              <ConsultBrandMark size={32} />
+              {logoUrl ? (
+                <img src={logoUrl} alt={clientName} className="h-8 w-8 shrink-0 rounded-lg border border-slate-200 bg-white object-contain p-1" />
+              ) : (
+                <ConsultBrandMark size={32} />
+              )}
             </Tooltip>
           ) : (
             <ConsultBrandMark size={36} />
@@ -72,38 +89,25 @@ function SidebarContent({
             <div className="min-w-0">
               {/*
                 Hierarquia igual à do 7Commander: nome do produto como "eyebrow" em
-                caixa alta/ciano, tagline em destaque (maior, branco, bold) e a
-                Consult Services como atribuição — não como o elemento dominante.
+                caixa alta/azul institucional, tagline em destaque (maior, escura,
+                bold) e a Consult Services como atribuição — não como o elemento
+                dominante. Cores escuras porque esta zona agora é sempre clara.
               */}
-              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--consult-sky)]">CRM Flow</div>
-              <div className="text-[15px] font-extrabold leading-snug text-white">Gestão Comercial e Atendimento</div>
-              <div className="text-[10px] font-medium leading-snug text-white/55">Uma plataforma Consult Services</div>
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--consult-blue)]">CRM Flow</div>
+              <div className="text-[15px] font-extrabold leading-snug text-slate-900">Gestão Comercial e Atendimento</div>
+              <div className="text-[10px] font-medium leading-snug text-slate-500">Uma plataforma Consult Services</div>
             </div>
           )}
         </div>
 
         {!collapsed && (
           showClientContext ? (
-            <div className="mt-4 flex items-center gap-2 rounded-md bg-black/20 px-2.5 py-2">
-              {tenant?.settings?.logoUrl ? (
-                <img src={tenant.settings.logoUrl} alt="" className="h-5 w-5 shrink-0 rounded bg-white/90 object-contain p-0.5" />
-              ) : (
-                <div
-                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[10px] font-bold text-white"
-                  style={{ backgroundColor: primaryColor }}
-                >
-                  {clientName.charAt(0)}
-                </div>
-              )}
-              <div className="min-w-0">
-                <div className="text-[9px] font-semibold uppercase tracking-wider text-white/50">Cliente</div>
-                <div className="truncate text-xs font-bold text-white">{clientName}</div>
-              </div>
+            <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Cliente: <span className="normal-case text-slate-600">{clientName}</span>
             </div>
           ) : (
-            <div className="mt-4 rounded-md bg-black/20 px-2.5 py-2">
-              <div className="text-[9px] font-semibold uppercase tracking-wider text-white/50">Acesso</div>
-              <div className="truncate text-xs font-bold text-white">Painel master</div>
+            <div className="mt-2 text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+              Acesso: <span className="normal-case text-slate-600">Painel master</span>
             </div>
           )
         )}

@@ -160,6 +160,56 @@ Tecnologia") tambem foram salvos em `public/branding/` para uso futuro
 (ex.: uma tela "Sobre"), mas nao estao referenciados em nenhum componente
 ainda - fora do escopo desta fase.
 
+### Correcao pos-comparacao com o 7Commander real
+
+O usuario comparou lado a lado com uma tela real do 7Commander com
+whitelabel de cliente aplicado (logo + cor propria) e apontou que o
+comportamento nao batia: no CRM Flow, a zona de marca (logo + "CRM
+FLOW"/tagline) estava sendo tingida pela cor do whitelabel junto com o
+menu, e o logo do cliente aparecia pequeno, dentro de um chip
+secundario - nao como no 7Commander, onde o logo do cliente aparece
+grande e em destaque, sobre um fundo neutro que nao muda de cor, com a
+marca "7Commander / Consult Services" sempre visivel em texto logo
+abaixo.
+
+`src/components/layout/Sidebar.tsx` foi reestruturado para ter duas
+zonas visualmente distintas, como no 7Commander:
+
+- **Zona de marca** (topo): fundo branco FIXO, nunca tingido por
+  `--sidebar-color`. Quando o tenant tem logo customizado, ele aparece
+  grande, num cartao proprio; a marca "CRM Flow / Gestao Comercial e
+  Atendimento / Uma plataforma Consult Services" continua sempre visivel
+  abaixo, em texto escuro (legivel em fundo claro). Sem logo
+  customizado, mostra a marca da Consult Services no lugar.
+- **Zona de navegacao** (menu + rodape): continua seguindo
+  `--sidebar-color`/`--sidebar-text-color` do whitelabel, como antes -
+  so a zona de marca deixou de ser tingida.
+
+Validado replicando o mesmo teste do usuario (logo + cor principal
+vermelha + menu vermelho escuro + texto branco): resultado visualmente
+equivalente ao 7Commander em desktop expandido, recolhido e mobile.
+
+### Remocao de texto "demo" fora da branch demo/localstorage
+
+Reforcado pelo usuario: rotular a experiencia como "demonstrativa" so
+faz sentido na branch `demo/localstorage` (que usa dados 100% locais,
+sem persistencia real). Encontrados e corrigidos dois textos que
+vazavam esse rotulo para as branches com API real:
+
+- `src/pages/chat/Chat.tsx`: texto fixo "Ambiente demonstrativo" sob o
+  nome do lead no cabecalho do Chat, substituido pelo telefone do lead
+  (dado real ja usado em outros pontos da mesma tela).
+- `src/pages/settings/AiSettings.tsx`: aviso de salvamento dizia
+  "Configuracoes salvas neste ambiente demonstrativo" - corrigido para
+  descrever o que realmente acontece ("salvas apenas neste navegador -
+  ainda nao sincronizam com o servidor"), ja que esta tela **ainda nao
+  esta ligada a `/api/ai/settings`** (grava so em `localStorage`, achado
+  novo que precisa entrar no `DATA_PERSISTENCE_MAP.md`).
+- `src/pages/settings/WhatsAppSettings.tsx`: texto descrevia o
+  onboarding oficial da Meta como algo para "demonstrar a conexao do
+  MVP" - reescrito para descrever a funcao real da tela (conectar e
+  manter a integracao ativa).
+
 ## 9. Fase 7 - Configuracoes e whitelabel
 
 - padronizar telas;
