@@ -122,11 +122,13 @@ Entregas:
   (`#0F172A`); item ativo em azul claro/ciano institucional
   (`--consult-sky`, `#1D9BF0`), fixo (nao segue whitelabel), com texto em
   azul escuro para contraste;
-- bloco de marca fixo no topo da sidebar: marca Consult Services (hoje um
-  placeholder SVG em `public/branding/consult-services-mark.svg`, ver
-  `ConsultBrandMark.tsx` - trocar pelo arquivo oficial quando disponivel) +
-  "CRM FLOW" + "Gestao Comercial e Atendimento". Fixo mesmo com whitelabel
-  ativo - o produto nao perde identidade;
+- bloco de marca fixo no topo da sidebar: marca Consult Services (arquivo
+  oficial, recortado do logo quadrado enviado pelo time - ver
+  `public/branding/consult-services-mark.png` e `ConsultBrandMark.tsx`) +
+  hierarquia igual a do 7Commander (nome do produto em caixa alta/ciano
+  como eyebrow, tagline em destaque, "Uma plataforma Consult Services"
+  como atribuicao). Fixo mesmo com whitelabel ativo - o produto nao perde
+  identidade;
 - whitelabel do cliente passou a conviver com a marca do produto: logo e
   nome do tenant aparecem como card secundario ("Cliente: X") abaixo do
   bloco de marca, nunca substituindo-o. Antes, o logo do cliente ocupava
@@ -149,9 +151,14 @@ Fora do escopo desta fase (nao alterado):
 - estrutura/nomes dos grupos de navegacao (jah correspondiam ao padrao
   esperado).
 
-Pendencia: arquivo oficial da logo Consult Services ainda nao foi
-recebido - `ConsultBrandMark.tsx` usa um placeholder SVG proprio, trocavel
-sem mudanca de codigo assim que o arquivo real for enviado.
+Arquivo oficial da logo Consult Services recebido do time e aplicado
+(`public/branding/consult-services-mark.png`, recorte do "C" a partir do
+logo quadrado oficial - fundo branco original preservado dentro de um
+cartao arredondado, mesmo tratamento visual usado pelo 7Commander). Os
+logos completos (quadrado e retangular, com wordmark "Consult Services
+Tecnologia") tambem foram salvos em `public/branding/` para uso futuro
+(ex.: uma tela "Sobre"), mas nao estao referenciados em nenhum componente
+ainda - fora do escopo desta fase.
 
 ## 9. Fase 7 - Configuracoes e whitelabel
 
