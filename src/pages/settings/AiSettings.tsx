@@ -32,8 +32,12 @@ export default function AiSettings() {
   }, []);
 
   function save() {
+    // Esta tela ainda não está ligada a /api/ai/settings — grava só neste navegador
+    // (localStorage), não no backend. Ver DATA_PERSISTENCE_MAP.md. "Ambiente
+    // demonstrativo" não é mais um texto correto fora da branch demo/localstorage, então
+    // o aviso passou a descrever o que realmente acontece, em vez de rotular o ambiente.
     localStorage.setItem('crm-ai-settings', JSON.stringify({ enabled, model, tone, companyContext, businessRules, attendanceFeedbackEnabled, attendanceFeedbackPrompt, automaticClosureEnabled, automaticClosureMinutes, monthlyTokenLimit, currentUsage }));
-    setNotice('Configurações salvas neste ambiente demonstrativo.');
+    setNotice('Configurações salvas apenas neste navegador — ainda não sincronizam com o servidor.');
   }
 
   return (

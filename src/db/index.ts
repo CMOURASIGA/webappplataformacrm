@@ -134,12 +134,12 @@ function applySchemaAndSeed() {
   } catch {}
 
   try {
-    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_color TEXT DEFAULT '#0F172A'");
+    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_color TEXT DEFAULT '#0B3A75'");
     changed = true;
   } catch {}
 
   try {
-    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_text_color TEXT DEFAULT '#cbd5e1'");
+    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_text_color TEXT DEFAULT '#D7E7F7'");
     changed = true;
   } catch {}
 
@@ -312,8 +312,30 @@ function applySchemaAndSeed() {
     db.prepare(`
       INSERT INTO tenant_settings (tenant_id, company_name, primary_color, sidebar_color, sidebar_text_color, lead_capture_token)
       VALUES (?, ?, ?, ?, ?, lower(hex(randomblob(24))))
-    `).run(demoTenantId, 'CRM Demo', '#4f46e5', '#0F172A', '#cbd5e1');
+    `).run(demoTenantId, 'CRM Demo', '#0B3A75', '#0B3A75', '#D7E7F7');
     changed = true;
+  } else {
+    // Migração corretiva (Fase 6.5): um banco criado antes desta fase já tinha o tenant
+    // de demonstração seedado com as cores antigas (indigo #4f46e5 / quase-preto
+    // #0F172A) — o INSERT acima só roda uma vez (`if (!demoSettingsExists)`), então sem
+    // isso o ambiente de demonstração continuaria com a identidade antiga mesmo depois
+    // do deploy do código novo. Só atualiza se os valores ainda forem exatamente os
+    // defaults antigos — nunca sobrescreve uma customização de whitelabel feita de
+    // verdade no tenant de demonstração.
+    const demoSettings = db.prepare(
+      'SELECT primary_color, sidebar_color, sidebar_text_color FROM tenant_settings WHERE tenant_id = ?'
+    ).get(demoTenantId) as { primary_color: string; sidebar_color: string; sidebar_text_color: string } | undefined;
+    if (
+      demoSettings &&
+      demoSettings.primary_color === '#4f46e5' &&
+      demoSettings.sidebar_color === '#0F172A' &&
+      demoSettings.sidebar_text_color === '#cbd5e1'
+    ) {
+      db.prepare(
+        'UPDATE tenant_settings SET primary_color = ?, sidebar_color = ?, sidebar_text_color = ? WHERE tenant_id = ?'
+      ).run('#0B3A75', '#0B3A75', '#D7E7F7', demoTenantId);
+      changed = true;
+    }
   }
 
   const demoPipelineExists = db.prepare('SELECT 1 FROM pipelines WHERE id = ?').get(demoPipelineId);

@@ -21,6 +21,8 @@
 ## Plataforma
 
 - [PLATFORM_RULES.md](./03-platform/PLATFORM_RULES.md) - multitenancy, autorizacao, seguranca, whitelabel, auditoria e APIs.
+- [ENVIRONMENTS.md](./03-platform/ENVIRONMENTS.md) - contrato oficial de main, develop e demo/localstorage.
+- [DATA_PERSISTENCE_MAP.md](./03-platform/DATA_PERSISTENCE_MAP.md) - mapa de persistencia por feature (store, API, banco), usado para decidir o que o frontend pode apresentar como funcionalidade oficial.
 
 ## Inteligencia Artificial
 
@@ -40,4 +42,5 @@ Em caso de duvida durante o desenvolvimento:
 2. regra funcional documentada prevalece sobre comportamento visual legado, desde que a mudanca esteja dentro do escopo aprovado;
 3. Design System prevalece sobre estilo local de pagina;
 4. preservar funcionalidade existente e obrigatorio salvo mudanca explicitamente aprovada;
-5. o 7Commander e referencia de experiencia da familia Consult Services, nao obrigacao de copiar tecnologia.
+5. o 7Commander e referencia de experiencia da familia Consult Services, nao obrigacao de copiar tecnologia;
+6. `ENVIRONMENTS.md` prevalece sobre sincronizacao cega de branches quando a camada de dados for diferente.

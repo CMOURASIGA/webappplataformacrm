@@ -13,6 +13,58 @@
   --color-primary-800: color-mix(in srgb, var(--primary-color, #0B3A75) 50%, black);
   --color-primary-900: color-mix(in srgb, var(--primary-color, #0B3A75) 30%, black);
   --color-primary: var(--primary-color, #0B3A75);
+
+  /*
+   * Secondary accent — fixed Consult Services institutional blue.
+   * NOT a whitelabel field: useApplyTenantTheme only sets primaryColor,
+   * sidebarColor and sidebarTextColor today. Do not read a --secondary-color
+   * tenant variable here until secondaryColor actually exists in the
+   * whitelabel/tenant model (product decision, tracked separately).
+   */
+  --color-secondary-50: color-mix(in srgb, #1D9BF0 10%, white);
+  --color-secondary-100: color-mix(in srgb, #1D9BF0 20%, white);
+  --color-secondary-200: color-mix(in srgb, #1D9BF0 30%, white);
+  --color-secondary-300: color-mix(in srgb, #1D9BF0 50%, white);
+  --color-secondary-400: color-mix(in srgb, #1D9BF0 70%, white);
+  --color-secondary-500: #1D9BF0;
+  --color-secondary-600: color-mix(in srgb, #1D9BF0 85%, black);
+  --color-secondary-700: color-mix(in srgb, #1D9BF0 70%, black);
+  --color-secondary: #1D9BF0;
+
+  /* Semantic state colors (fixed, do not follow whitelabel) */
+  --color-success-50: #ECFDF5;
+  --color-success-500: #10B981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+  --color-warning-50: #FFFBEB;
+  --color-warning-500: #F59E0B;
+  --color-warning-600: #D97706;
+  --color-warning-700: #B45309;
+  --color-danger-50: #FEF2F2;
+  --color-danger-500: #EF4444;
+  --color-danger-600: #DC2626;
+  --color-danger-700: #B91C1C;
+  --color-info-50: #EFF6FF;
+  --color-info-500: #3B82F6;
+  --color-info-600: #2563EB;
+  --color-info-700: #1D4ED8;
+
+  /* Radius scale */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-full: 9999px;
+
+  /* Shadow scale (discrete, per Design System §7/§9) */
+  --shadow-cs-xs: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-cs-sm: 0 1px 3px 0 rgb(15 23 42 / 0.08), 0 1px 2px -1px rgb(15 23 42 / 0.06);
+  --shadow-cs-md: 0 4px 12px -2px rgb(15 23 42 / 0.10), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --shadow-cs-lg: 0 12px 32px -8px rgb(15 23 42 / 0.18), 0 4px 8px -4px rgb(15 23 42 / 0.08);
+
+  /* Typography */
+  --font-sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
 
 :root {
@@ -20,6 +72,24 @@
   --consult-sky: #1D9BF0;
   --consult-border: #D7E7F7;
   --consult-muted: #F8FAFC;
+
+  /* Spacing scale — CRM Flow Design System §9 */
+  --cs-space-1: 4px;
+  --cs-space-2: 8px;
+  --cs-space-3: 12px;
+  --cs-space-4: 16px;
+  --cs-space-6: 24px;
+  --cs-space-8: 32px;
+  --cs-space-10: 40px;
+
+  /* z-index scale — Design System §2 */
+  --cs-z-dropdown: 30;
+  --cs-z-sticky: 35;
+  --cs-z-overlay: 40;
+  --cs-z-drawer: 50;
+  --cs-z-modal: 60;
+  --cs-z-tooltip: 70;
+  --cs-z-toast: 80;
 }
 
 body {
@@ -61,4 +131,43 @@ body {
   .cs-control {
     @apply rounded-md border border-slate-300 bg-white text-sm outline-none transition-colors focus:border-primary-500 focus:ring-2 focus:ring-primary-100;
   }
+
+  /* Typography hierarchy — Design System §4 */
+  .cs-text-page-title {
+    @apply text-xl font-extrabold tracking-tight text-slate-950;
+  }
+
+  .cs-text-section-title {
+    @apply text-xs font-extrabold uppercase tracking-wider text-slate-500;
+  }
+
+  .cs-text-body {
+    @apply text-sm font-medium text-slate-700;
+  }
+
+  .cs-text-caption {
+    @apply text-xs font-medium text-slate-500;
+  }
+
+  .cs-text-label {
+    @apply text-sm font-bold text-slate-700;
+  }
+
+  .cs-text-helper {
+    @apply text-xs text-slate-500;
+  }
+
+  .cs-text-kpi-value {
+    @apply text-2xl font-extrabold tracking-tight text-slate-950;
+  }
+
+  /* Shared focus-visible ring for interactive controls */
+  .cs-focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-primary-500 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+  }
+}
+
+@keyframes cs-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }

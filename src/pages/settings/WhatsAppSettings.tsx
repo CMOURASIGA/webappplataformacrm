@@ -262,7 +262,7 @@ export default function WhatsAppSettings() {
         <div>
           <h1 className="text-2xl font-bold text-slate-800">Integração WhatsApp / Meta</h1>
           <p className="text-slate-500 mt-1">
-            Fluxo oficial de onboarding com a Meta para demonstrar a conexão do MVP e preservar a base para operação posterior.
+            Fluxo oficial de onboarding com a Meta para conectar o WhatsApp Business e manter a integração ativa para o atendimento.
           </p>
         </div>
         <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600">

@@ -1,14 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store';
-import { Send, Sparkles, FileText, Activity, MessagesSquare, Search, X, ClipboardCheck } from 'lucide-react';
+import { Send, Sparkles, FileText, Activity, MessagesSquare, Search, X, ClipboardCheck, PanelRightOpen, ChevronLeft } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
 import { Button } from '../../components/ui/Button';
+import { IconButton } from '../../components/ui/IconButton';
 import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Badge } from '../../components/ui/Badge';
+import { Tag } from '../../components/ui/Tag';
 import { cn } from '../../lib/utils';
 import { useSearchParams } from 'react-router-dom';
 
 import DOMPurify from 'dompurify';
 import { AttendanceFeedbackModal, type AttendanceFeedback } from '../../components/crm/AttendanceFeedbackModal';
+import { LeadWorkspaceDrawer, classificationVariant } from '../../components/crm/LeadWorkspaceDrawer';
+import { LeadFormDrawer } from '../../components/crm/LeadFormDrawer';
+import type { Lead } from '../../types';
 
 function textToHtml(value: string) {
   return DOMPurify.sanitize(
@@ -57,7 +64,9 @@ export default function Chat() {
   const messages = useStore(state => state.messages);
   const pipelines = useStore(state => state.pipelines);
   const quickReplies = useStore(state => state.quickReplies);
-  
+  const tags = useStore(state => state.tags);
+  const users = useStore(state => state.users);
+
   const addMessage = useStore(state => state.addMessage);
   const assignConversation = useStore(state => state.assignConversation);
   const updateConversationStatus = useStore(state => state.updateConversationStatus);
@@ -65,14 +74,26 @@ export default function Chat() {
   const moveLead = useStore(state => state.moveLead);
   const fetchMessages = useStore(state => state.fetchMessages);
   const setLeadClassification = useStore(state => state.setLeadClassification);
-  const addLeadHistory = useStore(state => state.addLeadHistory);
   const logAction = useStore(state => state.logAction);
 
   const [activeLeadId, setActiveLeadId] = useState<string | null>(null);
+  // Estado só de UI (não é filtro nem seleção) para o shell mobile: qual painel mostrar
+  // em telas estreitas, já que lista e conversa não cabem lado a lado em 390px. Ajuste
+  // incremental da Fase 6 — o redesenho completo do shell de duas colunas segue
+  // registrado como pendência para a fase de qualidade/mobile. Começa mostrando a lista;
+  // vira conversa só numa ação explícita (clique numa conversa ou deep link com ?lead=),
+  // nunca pela seleção automática do primeiro item (efeito abaixo) — senão o usuário
+  // veria a lista "pular" para a conversa sozinha ao trocar de aba em mobile.
+  const [mobileShowList, setMobileShowList] = useState(true);
   const [text, setText] = useState('');
   const [isAiLoading, setIsAiLoading] = useState(false);
   const [aiSummary, setAiSummary] = useState<any>(null);
   const [aiClassification, setAiClassification] = useState<any>(null);
+  // Controle de "mensagens já resumidas" apenas para esta sessão do navegador — não usa
+  // lead.history (Fase 6: essa estrutura não é persistida pelo backend, ver
+  // docs/crm-flow/03-platform/DATA_PERSISTENCE_MAP.md). Some ao recarregar a página, e
+  // isso é intencional: não fingimos uma continuidade que a API não garante.
+  const [summarizedMessageIds, setSummarizedMessageIds] = useState<Set<string>>(new Set());
   const [quickRepliesOpen, setQuickRepliesOpen] = useState(false);
   const [quickReplySearch, setQuickReplySearch] = useState('');
   const [operationError, setOperationError] = useState('');
@@ -80,6 +101,9 @@ export default function Chat() {
   const [isClosing, setIsClosing] = useState(false);
   const [isFeedbackLoading, setIsFeedbackLoading] = useState(false);
   const [attendanceFeedback, setAttendanceFeedback] = useState<{ data: AttendanceFeedback; dismissOnClose: boolean } | null>(null);
+  const [workspaceOpen, setWorkspaceOpen] = useState(false);
+  const [editingLead, setEditingLead] = useState<Lead | null>(null);
+  const [isEditFormOpen, setIsEditFormOpen] = useState(false);
 
   const handleSuggestReply = async () => {
     if (!activeConversation) return;
@@ -102,10 +126,10 @@ export default function Chat() {
 
   const handleSummarize = async () => {
     if (!activeConversation) return;
-    const processedIds = new Set(activeLead?.history?.flatMap(entry => entry.messageIds || []) || []);
-    const sessionMessages = activeMessages.filter(message => !processedIds.has(message.id));
+    // Sessão local, não lead.history — ver comentário na declaração de summarizedMessageIds.
+    const sessionMessages = activeMessages.filter(message => !summarizedMessageIds.has(message.id));
     if (sessionMessages.length === 0) {
-      setOperationError('Não existem novas mensagens para registrar neste histórico.');
+      setOperationError('Não existem novas mensagens para resumir nesta sessão.');
       return;
     }
     setIsAiLoading(true);
@@ -116,17 +140,7 @@ export default function Chat() {
         body: JSON.stringify({ action: 'summarize', lead: activeLead, messages: sessionMessages }),
       });
       setAiSummary(data);
-      if (activeLead && useStore.getState().automations.find(rule => rule.trigger === 'ai_summary' && rule.enabled)) {
-        addLeadHistory(activeLead.id, {
-          type: 'ai_summary',
-          title: 'Resumo do atendimento',
-          content: [data.resumo, data.proxima_acao ? `Próxima ação: ${data.proxima_acao}` : ''].filter(Boolean).join(' '),
-          createdBy: currentUser?.id,
-          messageIds: sessionMessages.map(message => message.id),
-          startedAt: sessionMessages[0]?.createdAt,
-          endedAt: sessionMessages.at(-1)?.createdAt,
-        });
-      }
+      setSummarizedMessageIds(prev => new Set([...prev, ...sessionMessages.map(message => message.id)]));
     } catch (err) {
       console.error('Summarize conversation failed:', err);
       setOperationError(getAiErrorMessage(err, 'resumir a conversa'));
@@ -173,6 +187,8 @@ export default function Chat() {
   const activeLead = activeLeadId ? tenantLeads.find(l => l.id === activeLeadId) : null;
   const activeConversation = activeLeadId ? tenantConversations.find(c => c.leadId === activeLeadId) : null;
   const activePipeline = activeLead ? pipelines.find(p => p.id === activeLead.pipelineId) : null;
+  const activeLeadTags = (activeLead?.tags || []).map(id => tags.find(tag => tag.id === id)).filter(Boolean);
+  const activeLeadAssignee = activeLead?.assignedTo ? users.find(u => u.id === activeLead.assignedTo) : undefined;
   
   const activeMessages = activeConversation ? messages.filter(m => m.conversationId === activeConversation.id).sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()) : [];
 
@@ -180,6 +196,9 @@ export default function Chat() {
     setAiSummary(null);
     setAiClassification(activeLead?.classificationDetails || null);
     setOperationError('');
+    // Sessão nova para este lead: zera o controle de mensagens já resumidas.
+    // Ver nota em handleSummarize sobre por que isso não usa lead.history.
+    setSummarizedMessageIds(new Set());
   }, [activeLead?.id]);
 
   useEffect(() => {
@@ -191,7 +210,16 @@ export default function Chat() {
   useEffect(() => {
     const view = searchParams.get('view');
     const lead = searchParams.get('lead');
-    if (lead && tenantLeads.some(item => item.id === lead)) setActiveLeadId(lead);
+    if (lead && tenantLeads.some(item => item.id === lead)) {
+      setActiveLeadId(lead);
+      setMobileShowList(false); // deep link deve abrir a conversa direto em mobile, não a lista
+      // A deep link targets a specific lead regardless of which tab was last active.
+      // Without this, the "clamp to filtered list" effect below can immediately evict
+      // the just-selected lead if its conversation isn't under the current filter —
+      // e.g. opening /chat?lead=X (from the Lead Workspace's "Abrir atendimento" or a
+      // shared link) while still on "Minhas" would silently drop back to "nenhum lead".
+      if (canViewAll) setFilter('todas');
+    }
     if (view === 'minhas' || view === 'fila' || view === 'todas' || view === 'abertas') {
       setFilter(view);
     }
@@ -251,6 +279,7 @@ export default function Chat() {
   const handleSelectLead = async (leadId: string) => {
     setOperationError('');
     setActiveLeadId(leadId);
+    setMobileShowList(false);
     const existing = tenantConversations.find(c => c.leadId === leadId);
     if (!existing && tenantId) {
       await addConversation(leadId, tenantId);
@@ -323,8 +352,12 @@ export default function Chat() {
 
   return (
     <div className="h-[calc(100vh-8rem)] flex border border-slate-200 rounded-xl overflow-hidden bg-white shadow-lg">
-      {/* Sidebar: Leads List */}
-      <div className="w-80 border-r border-slate-200 flex flex-col bg-slate-50/30">
+      {/* Sidebar: Leads List — em mobile ocupa a tela inteira e some quando uma conversa
+          está aberta (ver mobileShowList); a partir de md as duas colunas convivem lado a lado. */}
+      <div className={cn(
+        "w-full border-r border-slate-200 flex-col bg-slate-50/30 md:flex md:w-80",
+        (mobileShowList || !activeLead) ? "flex" : "hidden"
+      )}>
         
         <div className="p-4 border-b border-slate-100 bg-white">
           <div className="font-bold text-slate-800 mb-4">Conversas</div>
@@ -375,10 +408,27 @@ export default function Chat() {
       </div>
 
       {/* Main: Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className={cn(
+        "flex-1 flex-col md:flex",
+        (activeLead && !mobileShowList) ? "flex" : "hidden"
+      )}>
         {activeLead ? (
           <>
-            <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <div className="border-b border-slate-100 bg-slate-50/50 p-4">
+            {/* Empilha nome/Workspace acima das ações em telas estreitas (Fase 6 fix de
+                mobile) — em vez de competir por espaço na mesma linha, que ficava
+                espremido em 390px. Ajuste incremental: lista e conversa alternam de
+                painel em mobile (ver mobileShowList/botão "Conversas" acima) só para dar
+                espaço ao contexto comercial; não é o redesenho completo do shell de duas
+                colunas, que segue registrado para a fase de qualidade/mobile. */}
+            <button
+              type="button"
+              onClick={() => setMobileShowList(true)}
+              className="mb-2 flex items-center gap-1 text-xs font-semibold text-primary-600 md:hidden"
+            >
+              <ChevronLeft size={14} /> Conversas
+            </button>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex items-center gap-4">
                 <div className="relative">
                   <div className="w-10 h-10 rounded-full bg-primary-100 flex items-center justify-center text-primary-700 font-bold">
@@ -387,43 +437,29 @@ export default function Chat() {
                   <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 border-2 border-white rounded-full"></div>
                 </div>
                 <div>
-                  <div className="font-bold text-sm text-slate-800">{activeLead.name}</div>
-                  <div className="text-[11px] text-slate-500 font-medium">Ambiente demonstrativo</div>
-                  {activeLead.classification && (
-                    <div className="mt-1 text-[10px] font-bold uppercase tracking-wide text-slate-500">
-                      Classificacao: <span className="text-primary-700">{activeLead.classification}</span>
-                    </div>
-                  )}
-                </div>
-                
-                {activePipeline && (
-                  <div className="ml-4 pl-4 border-l border-slate-200">
-                    <label className="text-[10px] text-slate-500 font-bold uppercase tracking-wider block mb-1">
-                      Funil: {activePipeline.name}
-                    </label>
-                    <select 
-                      value={activeLead.stageId}
-                      onChange={(e) => moveLead(activeLead.id, e.target.value)}
-                      className="text-xs border-slate-300 rounded px-2 py-1 bg-white focus:ring-primary-500 focus:border-primary-500"
-                    >
-                      {activePipeline.stages.map(s => (
-                        <option key={s.id} value={s.id}>{s.name}</option>
-                      ))}
-                    </select>
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-bold text-sm text-slate-800">{activeLead.name}</span>
+                    <IconButton label="Abrir Lead Workspace" size="sm" onClick={() => setWorkspaceOpen(true)}>
+                      <PanelRightOpen size={14} />
+                    </IconButton>
                   </div>
-                )}
+                  {/* Removido texto fixo "Ambiente demonstrativo" — não é mais verdade
+                      fora da branch demo/localstorage e não fingimos um status de
+                      presença/canal que a API não fornece. */}
+                  <div className="text-[11px] text-slate-500 font-medium">{activeLead.phone}</div>
+                </div>
               </div>
-              
-              <div className="flex items-center gap-2">
+
+              <div className="flex flex-wrap items-center gap-2">
                 <Button variant="outline" size="sm" onClick={handleClassify} disabled={isAiLoading}>
                   <Activity size={14} className="mr-1" />
                   Classificar Lead
                 </Button>
                 <Button variant="outline" size="sm" onClick={handleSummarize} disabled={isAiLoading}>
                   <FileText size={14} className="mr-1" />
-                  Registrar histórico
+                  Resumir conversa
                 </Button>
-                
+
                 {activeConversation && (!activeConversation.assignedTo || activeConversation.status === 'unassigned' || activeConversation.status === 'new') && (
                    <Button variant="outline" size="sm" onClick={handleAssign} disabled={isAssigning}>
                      {isAssigning ? 'Assumindo...' : 'Assumir'}
@@ -445,6 +481,42 @@ export default function Chat() {
                   </>
                 )}
               </div>
+            </div>
+
+            {/* Contexto comercial do lead — Fase 6: visível durante a conversa, sem duplicar o
+                Lead Workspace. Etapa continua persistindo pelo mesmo moveLead já usado no Kanban.
+                flex-wrap garante que classificação/etapa/responsável/origem/tags empilhem em
+                290-390px em vez de cortar. */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              {activeLead.classification ? (
+                <Badge variant={classificationVariant[activeLead.classification]} className="capitalize">{activeLead.classification}</Badge>
+              ) : (
+                <Badge variant="neutral">Não classificado</Badge>
+              )}
+              {activePipeline && (
+                <Select
+                  value={activeLead.stageId}
+                  onChange={(e) => moveLead(activeLead.id, e.target.value)}
+                  className="h-8 w-auto max-w-full text-xs"
+                  aria-label="Etapa do funil"
+                >
+                  {activePipeline.stages.map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </Select>
+              )}
+              <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600">
+                Responsável: {activeLeadAssignee?.name || 'Sem responsável'}
+              </span>
+              <span className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-600">
+                Origem: {activeLead.source}
+              </span>
+              {activeLeadTags.length > 0 && (
+                <div className="flex w-full flex-wrap gap-1.5 sm:w-auto">
+                  {activeLeadTags.map(tag => <Tag key={tag!.id} color={tag!.color}>{tag!.name}</Tag>)}
+                </div>
+              )}
+            </div>
             </div>
 
             {operationError && (
@@ -596,6 +668,17 @@ export default function Chat() {
           onClose={() => setAttendanceFeedback(null)}
         />
       )}
+      <LeadWorkspaceDrawer
+        lead={activeLead || null}
+        isOpen={workspaceOpen}
+        onClose={() => setWorkspaceOpen(false)}
+        onEdit={lead => { setWorkspaceOpen(false); setEditingLead(lead); setIsEditFormOpen(true); }}
+      />
+      <LeadFormDrawer
+        isOpen={isEditFormOpen}
+        lead={editingLead}
+        onClose={() => { setIsEditFormOpen(false); setEditingLead(null); }}
+      />
     </div>
   );
 }
