@@ -1,0 +1,9 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Consult Services">
+  <!--
+    Marca placeholder da Consult Services (Fase 6.5). Trocar este arquivo pelo
+    logo oficial assim que o time enviar o asset real — nenhum componente
+    React precisa mudar, só o conteúdo deste SVG (ver ConsultBrandMark.tsx).
+  -->
+  <rect width="36" height="36" rx="9" fill="#0B3A75"/>
+  <path d="M18 8.5c-5.25 0-9.5 4.25-9.5 9.5s4.25 9.5 9.5 9.5c3.1 0 5.86-1.49 7.59-3.79l-2.86-2.14A5.98 5.98 0 0 1 18 24a6 6 0 1 1 4.73-9.71l2.86-2.14A9.47 9.47 0 0 0 18 8.5Z" fill="#1D9BF0"/>
+</svg>

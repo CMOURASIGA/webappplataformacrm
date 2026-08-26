@@ -48,9 +48,12 @@ export default function Settings() {
   useEffect(() => {
     if (tenant) {
       setCompanyName(tenant.settings.companyName);
-      setPrimaryColor(tenant.settings.primaryColor || '#4f46e5');
-      setSidebarColor(tenant.settings.sidebarColor || '#0F172A');
-      setSidebarTextColor(tenant.settings.sidebarTextColor || '#cbd5e1');
+      // Defaults = paleta institucional Consult Services (Fase 6.5), mesmos valores de
+      // AppLayout.tsx/useApplyTenantTheme.ts — um tenant sem whitelabel configurado deve
+      // ver os mesmos tons aqui que já está usando no restante do app.
+      setPrimaryColor(tenant.settings.primaryColor || '#0B3A75');
+      setSidebarColor(tenant.settings.sidebarColor || '#0B3A75');
+      setSidebarTextColor(tenant.settings.sidebarTextColor || '#D7E7F7');
       setLogoUrl(tenant.settings.logoUrl || '');
     }
   }, [tenant]);

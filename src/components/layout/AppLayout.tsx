@@ -59,9 +59,11 @@ export function AppLayout() {
   const isMaster = currentUser?.role === 'master';
   const tenant = tenants.find((t) => t.id === (isMaster ? activeTenantId : currentUser?.tenantId));
 
+  // Defaults = paleta institucional Consult Services (Fase 6.5). Mesmos valores de
+  // fallback usados em useApplyTenantTheme.ts — mantidos em sincronia.
   const primaryColor = tenant?.settings?.primaryColor || '#0B3A75';
-  const sidebarColor = tenant?.settings?.sidebarColor || '#0F172A';
-  const sidebarTextColor = tenant?.settings?.sidebarTextColor || '#cbd5e1';
+  const sidebarColor = tenant?.settings?.sidebarColor || '#0B3A75';
+  const sidebarTextColor = tenant?.settings?.sidebarTextColor || '#D7E7F7';
 
   useApplyTenantTheme({ primaryColor, sidebarColor, sidebarTextColor });
 

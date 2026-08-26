@@ -109,6 +109,50 @@ Permitir, conforme permissao:
 - adicionar nota;
 - visualizar responsavel e tags.
 
+## 8.5 Fase 6.5 - App Shell: identidade visual Consult Services
+
+Feita antes da Fase 7 funcional, a pedido do usuario: o App Shell (sidebar +
+whitelabel) estava com aparencia de produto generico, sem convergencia visual
+com a familia Consult Services / 7Commander.
+
+Entregas:
+
+- sidebar com azul institucional Consult Services (`--consult-blue`,
+  `#0B3A75`) como fundo padrao, no lugar do azul quase preto anterior
+  (`#0F172A`); item ativo em azul claro/ciano institucional
+  (`--consult-sky`, `#1D9BF0`), fixo (nao segue whitelabel), com texto em
+  azul escuro para contraste;
+- bloco de marca fixo no topo da sidebar: marca Consult Services (hoje um
+  placeholder SVG em `public/branding/consult-services-mark.svg`, ver
+  `ConsultBrandMark.tsx` - trocar pelo arquivo oficial quando disponivel) +
+  "CRM FLOW" + "Gestao Comercial e Atendimento". Fixo mesmo com whitelabel
+  ativo - o produto nao perde identidade;
+- whitelabel do cliente passou a conviver com a marca do produto: logo e
+  nome do tenant aparecem como card secundario ("Cliente: X") abaixo do
+  bloco de marca, nunca substituindo-o. Antes, o logo do cliente ocupava
+  sozinho o espaco principal de marca da sidebar;
+- sidebar recolhida mantem a marca Consult Services (com tooltip), nao mais
+  um circulo generico com a inicial do tenant;
+- drawer mobile reaproveita o mesmo componente da sidebar desktop (jah era
+  assim antes) - identidade visual identica, nenhuma linguagem separada;
+- defaults de cor institucional propagados para: fallback de tema
+  (`useApplyTenantTheme.ts`/`AppLayout.tsx`), formulario de Identidade
+  visual (`Settings.tsx`) e seed do tenant de demonstracao no banco
+  (`src/db/index.ts` - so afeta bancos novos, nao migra tenants ja
+  existentes).
+
+Fora do escopo desta fase (nao alterado):
+
+- Header (jah estava branco, com hierarquia correta - mantido como estava);
+- Dashboard (cards brancos, icones/sombras jah seguiam o padrao - nao
+  precisou de ajuste);
+- estrutura/nomes dos grupos de navegacao (jah correspondiam ao padrao
+  esperado).
+
+Pendencia: arquivo oficial da logo Consult Services ainda nao foi
+recebido - `ConsultBrandMark.tsx` usa um placeholder SVG proprio, trocavel
+sem mudanca de codigo assim que o arquivo real for enviado.
+
 ## 9. Fase 7 - Configuracoes e whitelabel
 
 - padronizar telas;

@@ -134,12 +134,12 @@ function applySchemaAndSeed() {
   } catch {}
 
   try {
-    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_color TEXT DEFAULT '#0F172A'");
+    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_color TEXT DEFAULT '#0B3A75'");
     changed = true;
   } catch {}
 
   try {
-    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_text_color TEXT DEFAULT '#cbd5e1'");
+    db.exec("ALTER TABLE tenant_settings ADD COLUMN sidebar_text_color TEXT DEFAULT '#D7E7F7'");
     changed = true;
   } catch {}
 
@@ -312,7 +312,7 @@ function applySchemaAndSeed() {
     db.prepare(`
       INSERT INTO tenant_settings (tenant_id, company_name, primary_color, sidebar_color, sidebar_text_color, lead_capture_token)
       VALUES (?, ?, ?, ?, ?, lower(hex(randomblob(24))))
-    `).run(demoTenantId, 'CRM Demo', '#4f46e5', '#0F172A', '#cbd5e1');
+    `).run(demoTenantId, 'CRM Demo', '#0B3A75', '#0B3A75', '#D7E7F7');
     changed = true;
   }
 

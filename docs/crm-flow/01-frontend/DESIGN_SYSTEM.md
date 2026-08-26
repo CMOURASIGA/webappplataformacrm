@@ -37,6 +37,12 @@ O sistema deve validar contraste mínimo e impedir combinações que prejudiquem
 
 A personalização não pode alterar estrutura, espaçamento ou componentes de forma arbitrária.
 
+A marca do produto (Consult Services / CRM Flow) é fixa no topo da sidebar e não pode
+ser substituída pelo whitelabel — o logo e o nome do cliente aparecem como identidade
+secundária (card "Cliente"), convivendo com a marca do produto, nunca no lugar dela
+(Fase 6.5, ver `MIGRATION_PLAN.md` §8.5). O destaque de item ativo na navegação (azul
+claro/ciano institucional) também é fixo, não é campo de whitelabel.
+
 ## 4. Tipografia
 
 Definir hierarquia consistente:
