@@ -1,9 +1,27 @@
 <svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Consult Services">
   <!--
-    Marca placeholder da Consult Services (Fase 6.5). Trocar este arquivo pelo
-    logo oficial assim que o time enviar o asset real — nenhum componente
-    React precisa mudar, só o conteúdo deste SVG (ver ConsultBrandMark.tsx).
+    Marca da Consult Services (Fase 6.5). Reconstruída à mão a partir da logo oficial
+    que o time enviou como imagem colada no chat (um "C" formado por dois arcos tipo
+    trilha de circuito, com nós/pontos nas pontas) — não foi possível salvar o arquivo
+    bruto enviado, então este SVG é uma aproximação fiel ao desenho original, não uma
+    extração pixel-perfect. Se/quando o time enviar o arquivo oficial (SVG/PNG) por um
+    canal que dê para baixar, substituir o conteúdo deste arquivo é suficiente — nenhum
+    componente React precisa mudar (ver ConsultBrandMark.tsx).
   -->
-  <rect width="36" height="36" rx="9" fill="#0B3A75"/>
-  <path d="M18 8.5c-5.25 0-9.5 4.25-9.5 9.5s4.25 9.5 9.5 9.5c3.1 0 5.86-1.49 7.59-3.79l-2.86-2.14A5.98 5.98 0 0 1 18 24a6 6 0 1 1 4.73-9.71l2.86-2.14A9.47 9.47 0 0 0 18 8.5Z" fill="#1D9BF0"/>
+  <!-- Arco externo do "C", centro (18,18) raio 12, aberto à direita -->
+  <path d="M27.83 11.12A12 12 0 1 0 27.83 24.88" stroke="#12335F" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  <!-- Arco interno do "C", raio 7.5, mesma abertura -->
+  <path d="M24.14 13.7A7.5 7.5 0 1 0 24.14 22.3" stroke="#5B9BD9" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+
+  <!-- Nós/terminais do arco externo -->
+  <circle cx="27.83" cy="11.12" r="1.6" fill="#12335F"/>
+  <circle cx="27.83" cy="24.88" r="1.9" fill="#fff" stroke="#7DB2E8" stroke-width="1.4"/>
+
+  <!-- Nós/terminais do arco interno -->
+  <circle cx="24.14" cy="13.7" r="1.3" fill="#12335F"/>
+  <circle cx="24.14" cy="22.3" r="1.3" fill="#5B9BD9"/>
+
+  <!-- Trilha de circuito saindo do "C", como no original -->
+  <path d="M15 18h5l2.5-2.5h5.5M22.5 18.5h5" stroke="#7DB2E8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none" opacity="0.9"/>
+  <circle cx="29" cy="15.5" r="1.2" fill="#5B9BD9"/>
 </svg>
