@@ -70,8 +70,14 @@ function SidebarContent({
           )}
           {!collapsed && (
             <div className="min-w-0">
-              <div className="text-[15px] font-extrabold leading-tight tracking-tight text-white">CRM FLOW</div>
-              <div className="text-[11px] font-medium leading-snug text-white/70">Gestão Comercial e Atendimento</div>
+              {/*
+                Hierarquia igual à do 7Commander: nome do produto como "eyebrow" em
+                caixa alta/ciano, tagline em destaque (maior, branco, bold) e a
+                Consult Services como atribuição — não como o elemento dominante.
+              */}
+              <div className="text-[11px] font-bold uppercase tracking-wider text-[var(--consult-sky)]">CRM Flow</div>
+              <div className="text-[15px] font-extrabold leading-snug text-white">Gestão Comercial e Atendimento</div>
+              <div className="text-[10px] font-medium leading-snug text-white/55">Uma plataforma Consult Services</div>
             </div>
           )}
         </div>
