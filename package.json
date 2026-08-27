@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "vercelDeployMarker": "whitelabel-2026-08-27",
   "scripts": {
     "dev": "tsx server-entry.ts",
     "build": "vite build && esbuild server-entry.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
