@@ -18,10 +18,7 @@ interface SidebarContentProps {
 
 function SidebarContent({ isMaster, activeTenantId, tenant, currentUser, onNavigate }: SidebarContentProps) {
   const filteredOperationalNav = operationalNavigation
-    .map(group => ({
-      ...group,
-      items: group.items.filter(item => !item.adminOnly || currentUser.role === 'admin' || isMaster),
-    }))
+    .map(group => ({ ...group, items: group.items.filter(item => !item.adminOnly || currentUser.role === 'admin' || isMaster) }))
     .filter(group => group.items.length > 0);
 
   const showClientContext = !isMaster || !!activeTenantId;
@@ -31,8 +28,8 @@ function SidebarContent({ isMaster, activeTenantId, tenant, currentUser, onNavig
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="shrink-0 border-b border-white/15 px-4 pb-6 pt-4">
-        <div className="flex h-[144px] w-full items-center justify-center overflow-hidden rounded-xl bg-white px-2 py-2 shadow-sm">
-          <img src={logoUrl} alt={clientName} className="max-h-[132px] w-[96%] object-contain object-center" />
+        <div className="flex h-[144px] w-full items-center justify-center overflow-hidden rounded-xl border border-slate-200/90 bg-white px-1 py-1 shadow-sm ring-1 ring-black/5">
+          <img src={logoUrl} alt={clientName} className="max-h-[128px] max-w-[92%] object-contain object-center" />
         </div>
 
         <div className="mt-6">
@@ -55,9 +52,7 @@ function SidebarContent({ isMaster, activeTenantId, tenant, currentUser, onNavig
         {isMaster && <NavGroup title="Master" items={masterNavigation} onNavigate={onNavigate} />}
         {(!isMaster || activeTenantId) && (
           <div className={cn(isMaster && 'mt-4')}>
-            {filteredOperationalNav.map(group => (
-              <NavGroup key={group.title} title={group.title} items={group.items} onNavigate={onNavigate} />
-            ))}
+            {filteredOperationalNav.map(group => <NavGroup key={group.title} title={group.title} items={group.items} onNavigate={onNavigate} />)}
           </div>
         )}
       </nav>
@@ -68,9 +63,7 @@ function SidebarContent({ isMaster, activeTenantId, tenant, currentUser, onNavig
 const NavGroup: React.FC<{ title: string; items: NavItemConfig[]; onNavigate?: () => void }> = ({ title, items, onNavigate }) => (
   <div className="mb-5">
     <div className="mb-2 px-2 text-[10px] font-bold uppercase tracking-widest opacity-55">{title}</div>
-    <div className="space-y-1">
-      {items.map(item => <NavItem key={item.href} to={item.href} icon={item.icon} label={item.name} onNavigate={onNavigate} />)}
-    </div>
+    <div className="space-y-1">{items.map(item => <NavItem key={item.href} to={item.href} icon={item.icon} label={item.name} onNavigate={onNavigate} />)}</div>
   </div>
 );
 
@@ -80,9 +73,7 @@ const NavItem: React.FC<{ to: string; icon: React.ReactNode; label: string; onNa
     onClick={onNavigate}
     className={({ isActive }) => cn(
       'cs-focus-ring flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors',
-      isActive
-        ? 'bg-[var(--brand-highlight)] font-bold text-[var(--brand-highlight-text)] shadow-sm'
-        : 'text-current opacity-85 hover:bg-white/10 hover:opacity-100'
+      isActive ? 'bg-[var(--brand-highlight)] font-bold text-[var(--brand-highlight-text)] shadow-sm' : 'text-current opacity-85 hover:bg-white/10 hover:opacity-100'
     )}
   >
     {icon}
@@ -99,10 +90,7 @@ export interface SidebarProps extends Omit<SidebarContentProps, 'onNavigate'> {
 export function Sidebar({ mobileOpen, onMobileClose, ...content }: SidebarProps) {
   return (
     <>
-      <aside
-        className="hidden w-[256px] shrink-0 flex-col md:flex"
-        style={{ backgroundColor: 'var(--sidebar-color)', color: 'var(--sidebar-text-color)' }}
-      >
+      <aside className="hidden w-[256px] shrink-0 flex-col md:flex" style={{ backgroundColor: 'var(--sidebar-color)', color: 'var(--sidebar-text-color)' }}>
         <SidebarContent collapsed={false} {...content} />
       </aside>
 
